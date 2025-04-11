@@ -1,0 +1,19 @@
+{
+  "name": "arapy-11labs",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "parcel build index.html --dist-dir dist",
+    "deploy": "gh-pages -d dist"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@11labs/client": "^0.1.2"
+  },
+  "devDependencies": {
+    "gh-pages": "^6.3.0",
+    "parcel": "^2.14.4"
+  }
+}
