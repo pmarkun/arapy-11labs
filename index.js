@@ -1,11 +1,13 @@
- // Importa o Conversation do pacote @11labs/client
+// Importa o Conversation do pacote @11labs/client
  import { Conversation } from '@11labs/client';
+ import { initFullVisualizer, observeMediaPlayback, hookConversationAudio, connectMediaEl, setActiveConversation, setVizMode } from './visualizer.js';
 
  const startBtn = document.getElementById('startBtn');
  const stopBtn = document.getElementById('stopBtn');
  const statusEl = document.getElementById('status');
  let conversationInstance = null;
  let audio = null;
+// Visualizer state is managed in visualizer.js
 
 // on page load: check for name and id parameters in url, then set the <span id=name> object
 
@@ -14,6 +16,7 @@ const urlParams = new URLSearchParams(window.location.search);
 let config = {
     name: urlParams.get('name'),
     agentId: urlParams.get('id'),
+  mode: urlParams.get('mode') || 'default',
 }
 
 //try to load  a {name}.json from the server overwriting the whole config object
@@ -40,6 +43,7 @@ const loadConfig = async () => {
 
 loadConfig();
 
+
  // Função para atualizar o status na interface
  const updateStatus = (status) => {
    statusEl.textContent = "Status: " + status;
@@ -58,11 +62,19 @@ loadConfig();
        startBtn.classList.add('hidden');
        stopBtn.classList.remove('hidden');
 
-        audio = new Audio(config.startAudio);
+       audio = new Audio(config.startAudio);
+       try { audio.crossOrigin = 'anonymous'; } catch {}
+       if (config.mode === 'full') {
+         await connectMediaEl(audio);
+         setVizMode('line');
+       }
         audio.play();
         updateStatus('Reproduzindo áudio de boas-vindas');
         await new Promise((resolve) => {
-          audio.onended = resolve;
+          audio.onended = () => {
+            if (config.mode === 'full') setVizMode('idle');
+            resolve();
+          };
         });  
       }
       
@@ -91,9 +103,21 @@ loadConfig();
          console.log('Status alterado:', status);
        },
        onModeChange: (mode) => {
-         console.log('Modo alterado:', mode);
+          console.log('Modo alterado:', mode);
+          // Toggle visualizer based on agent speaking/listening
+          try {
+            if (config.mode === 'full') {
+              setVizMode(mode === 'speaking' ? 'line' : 'idle');
+            }
+          } catch {}
        },
      });
+
+      // Try to hook SDK audio for visualization
+      if (config.mode === 'full') {
+        await hookConversationAudio(conversationInstance);
+        setActiveConversation(conversationInstance);
+      }
 
    } catch (error) {
      console.error('Erro ao iniciar a conversa:', error);
@@ -107,6 +131,7 @@ loadConfig();
       audio.pause();
       audio = null;
    }
+  setVizMode('idle');
    if (conversationInstance) {
      await conversationInstance.endSession();
      conversationInstance = null;
@@ -119,3 +144,24 @@ loadConfig();
  // Eventos dos botões
  startBtn.addEventListener('click', startConversation);
  stopBtn.addEventListener('click', endConversation);
+
+ // Full mode UI wiring: toggle layout and click-to-start anywhere
+ const cardEl = document.getElementById('card');
+ const fullModeEl = document.getElementById('fullMode');
+ if (config.mode === 'full') {
+   // Hide card, show overlay
+   if (cardEl) cardEl.classList.add('hidden');
+   if (fullModeEl) fullModeEl.classList.remove('hidden');
+  initFullVisualizer('vizCanvas');
+  observeMediaPlayback();
+   // Click anywhere to start/stop
+   fullModeEl.addEventListener('click', async () => {
+     if (!conversationInstance) {
+       await startConversation();
+     } else {
+       await endConversation();
+     }
+   });
+  // Idle by default
+  setVizMode('idle');
+ }

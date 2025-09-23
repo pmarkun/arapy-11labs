@@ -10,7 +10,13 @@
   </style>
 </head>
 <body class="bg-gray-100 flex items-center justify-center min-h-screen">
-  <div class="bg-white p-6 rounded shadow-md max-w-md w-full mx-4">
+  <!-- Full mode overlay (hidden by default) -->
+  <div id="fullMode" class="hidden fixed inset-0 bg-black select-none cursor-pointer">
+    <canvas id="vizCanvas" class="block w-full h-full"></canvas>
+  </div>
+
+  <!-- Default card UI -->
+  <div id="card" class="bg-white p-6 rounded shadow-md max-w-md w-full mx-4">
     <h1 class="text-2xl sm:text-3xl md:text-4xl font-semibold text-center text-gray-800">
       Retrovisor.IA 
       <p id="name" class="text-blue-600"></p>

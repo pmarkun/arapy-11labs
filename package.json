@@ -1,8 +1,9 @@
 {
   "name": "arapy-11labs",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "scripts": {
-    "build": "parcel build index.html --dist-dir dist",
+    "dev": "parcel index.html",
+    "build": "parcel build index.html --dist-dir dist --public-url ./ && cp -R public/* dist/",
     "deploy": "gh-pages -d dist"
   },
   "keywords": [],
@@ -10,7 +11,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "@11labs/client": "^0.1.2"
+  "@11labs/client": "^0.6.2"
   },
   "devDependencies": {
     "gh-pages": "^6.3.0",
