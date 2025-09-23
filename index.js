@@ -5,21 +5,40 @@
  const stopBtn = document.getElementById('stopBtn');
  const statusEl = document.getElementById('status');
  let conversationInstance = null;
+ let audio = null;
 
 // on page load: check for name and id parameters in url, then set the <span id=name> object
-const urlParams = new URLSearchParams(window.location.search);
-const name = urlParams.get('name');
-const agentId = urlParams.get('id');
-const nameEl = document.getElementById('name');
-console.log(agentId);
-if (name) {
-    nameEl.textContent = name;
-}
-if (!agentId) {
 
-    document.getElementById('startBtn').disabled = true;
-    document.getElementById('startBtn').innerText = "Agente não encontrado!";
+
+const urlParams = new URLSearchParams(window.location.search);
+let config = {
+    name: urlParams.get('name'),
+    agentId: urlParams.get('id'),
 }
+
+//try to load  a {name}.json from the server overwriting the whole config object
+const loadConfig = async () => {
+  if (!config.agentId) {
+      try {
+          const response = await fetch(`agents/${config.name}.json`);
+          const data = await response.json();
+          config = data;
+          console.log('Config loaded:', config);
+      } catch (error) {
+          console.error('Error loading config:', error);
+      }
+  }
+
+  document.getElementById('name').textContent = config.name;
+
+  if (!config.agentId) {
+      const startBtn = document.getElementById('startBtn');
+      startBtn.disabled = true;
+      startBtn.innerText = "Agente não encontrado!";
+  }
+};
+
+loadConfig();
 
  // Função para atualizar o status na interface
  const updateStatus = (status) => {
@@ -33,10 +52,24 @@ if (!agentId) {
      await navigator.mediaDevices.getUserMedia({ audio: true });
      updateStatus('Microfone liberado');
 
+    //Play an mp3 file and wait for it to finish
+      if (config.startAudio) {
+
+       startBtn.classList.add('hidden');
+       stopBtn.classList.remove('hidden');
+
+        audio = new Audio(config.startAudio);
+        audio.play();
+        updateStatus('Reproduzindo áudio de boas-vindas');
+        await new Promise((resolve) => {
+          audio.onended = resolve;
+        });  
+      }
+      
      // Inicia a sessão de conversa com o agente
      //Parse o ID do agente a partir da URL, parametro id
      conversationInstance = await Conversation.startSession({
-       agentId: agentId,
+       agentId: config.agentId,
        // Callbacks opcionais:
        onConnect: () => {
          console.log('Conectado ao agente!');
@@ -62,10 +95,6 @@ if (!agentId) {
        },
      });
 
-     // Atualiza os botões na UI
-     startBtn.classList.add('hidden');
-     stopBtn.classList.remove('hidden');
-
    } catch (error) {
      console.error('Erro ao iniciar a conversa:', error);
      updateStatus('Erro ao iniciar');
@@ -74,6 +103,10 @@ if (!agentId) {
 
  // Função para encerrar a conversa
  async function endConversation() {
+   if (audio) {
+      audio.pause();
+      audio = null;
+   }
    if (conversationInstance) {
      await conversationInstance.endSession();
      conversationInstance = null;
