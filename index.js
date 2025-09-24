@@ -1,6 +1,6 @@
 // Importa o Conversation do pacote @11labs/client
  import { Conversation } from '@11labs/client';
- import { initFullVisualizer, observeMediaPlayback, hookConversationAudio, connectMediaEl, setActiveConversation, setVizMode } from './visualizer.js';
+ import { initFullVisualizer, observeMediaPlayback, hookConversationAudio, connectMediaEl, setActiveConversation, setVizMode, forceMode } from './visualizer.js';
 
  const startBtn = document.getElementById('startBtn');
  const stopBtn = document.getElementById('stopBtn');
@@ -107,7 +107,8 @@ loadConfig();
           // Toggle visualizer based on agent speaking/listening
           try {
             if (config.mode === 'full') {
-              setVizMode(mode === 'speaking' ? 'line' : 'idle');
+              const m = mode === 'speaking' ? 'line' : 'idle';
+              forceMode(m);
             }
           } catch {}
        },

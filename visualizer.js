@@ -7,6 +7,7 @@ let rafId = null;
 let canvas = null;
 let ctx = null;
 let mode = 'idle'; // 'idle' | 'line'
+let forcedMode = null; // when set, overrides automatic detection
 let silentGainNode = null;
 const mediaSourceMap = new WeakMap(); // HTMLMediaElement -> MediaElementAudioSourceNode
 const streamSourceMap = new WeakMap(); // MediaStream -> MediaStreamAudioSourceNode
@@ -44,6 +45,11 @@ const buildAnalyserChain = (sourceNode) => {
   analyser.connect(silentGainNode);
 };
 
+const internalSetMode = (m) => {
+  if (forcedMode) return; // respect forced override
+  setVizMode(m);
+};
+
 export const connectMediaEl = async (el) => {
   if (!(el instanceof HTMLMediaElement)) return;
   await ensureAudioContext();
@@ -54,17 +60,17 @@ export const connectMediaEl = async (el) => {
   }
   if (source) buildAnalyserChain(source);
   try { el.crossOrigin = 'anonymous'; } catch {}
-  mode = 'line';
+  internalSetMode('line');
   console.log('[viz] MediaElement connected', { src: el.currentSrc || el.src });
   // Track play/pause on element
   el.addEventListener('play', () => {
     playingEls.add(el);
-    mode = 'line';
+    internalSetMode('line');
     console.log('[viz] element play');
   });
   const onStop = () => {
     playingEls.delete(el);
-    if (playingEls.size === 0) mode = 'idle';
+  if (playingEls.size === 0) internalSetMode('idle');
     console.log('[viz] element stop/pause, playing count:', playingEls.size);
   };
   el.addEventListener('pause', onStop);
@@ -80,11 +86,11 @@ export const connectMediaStream = async (stream) => {
     if (source) streamSourceMap.set(stream, source);
   }
   if (source) buildAnalyserChain(source);
-  mode = 'line';
+  internalSetMode('line');
   console.log('[viz] MediaStream connected with tracks:', stream.getTracks().map(t => t.kind + ':' + t.readyState));
   stream.getTracks().forEach(t => t.addEventListener('ended', () => {
     if (stream.getTracks().every(tr => tr.readyState === 'ended')) {
-      mode = 'idle';
+  internalSetMode('idle');
       console.log('[viz] stream ended');
     }
   }));
@@ -94,13 +100,13 @@ export const observeMediaPlayback = () => {
   const handler = async (type, target) => {
     if (!(target instanceof HTMLMediaElement)) return;
     if (type === 'play') {
-      await connectMediaEl(target);
-      playingEls.add(target);
-      mode = 'line';
+  await connectMediaEl(target);
+  playingEls.add(target);
+  internalSetMode('line');
       console.log('[viz] global play', target.tagName);
     } else {
       playingEls.delete(target);
-      if (playingEls.size === 0) mode = 'idle';
+  if (playingEls.size === 0) internalSetMode('idle');
       console.log('[viz] global', type, 'playing count:', playingEls.size);
     }
   };
@@ -147,6 +153,16 @@ export const setVizMode = (m) => {
   if (mode !== m) {
     console.log('[viz] mode ->', m);
     mode = m;
+  }
+};
+
+export const forceMode = (m) => {
+  forcedMode = m;
+  if (m) {
+    console.log('[viz] forced mode ->', m);
+    if (mode !== m) setVizMode(m);
+  } else {
+    console.log('[viz] forced mode cleared');
   }
 };
 
@@ -199,14 +215,18 @@ const drawLine = () => {
   let rms = 0;
   if (analyser && dataArray) {
     analyser.getByteTimeDomainData(dataArray);
+    // Remove DC offset to keep center exactly at midY
+    let mean = 0;
+    for (let i = 0; i < dataArray.length; i++) mean += dataArray[i];
+    mean /= dataArray.length; // around 128, but measured live
     const step = w / dataArray.length;
     let sum = 0;
     for (let i = 0; i < dataArray.length; i++) {
-      const val = (dataArray[i] - 128) / 128;
+      const centered = (dataArray[i] - mean) / 128; // now ~-1..1 around 0
       const x = i * step;
-      const y = midY + val * (h * 0.22);
+      const y = midY + centered * (h * 0.22);
       if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-      sum += val * val;
+      sum += centered * centered;
     }
     rms = Math.sqrt(sum / dataArray.length);
   } else if (activeConversation?.getOutputByteFrequencyData) {
@@ -222,17 +242,20 @@ const drawLine = () => {
     const bins = lastSdkBins;
     const len = bins?.length || 0;
     if (len > 0) {
+      // Center bins by subtracting their average so graph oscillates equally
+      let avg = 0;
+      for (let i = 0; i < len; i++) avg += bins[i];
+      avg /= len || 1;
       const step = w / len;
       let sum = 0;
       for (let i = 0; i < len; i++) {
-        const norm = bins[i] / 255;
-        const val = (norm - 0.5) * 2;
+        const centered = (bins[i] - avg) / 255; // roughly -0.5..0.5
         const x = i * step;
-        const y = midY + val * (h * 0.22);
+        const y = midY + centered * 2 * (h * 0.22); // scale to ~-1..1
         if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-        sum += Math.abs(val);
+        sum += centered * centered;
       }
-      rms = sum / len / 1.25; // rough approximation
+      rms = Math.sqrt(sum / len) / 1.1; // rough normalization
     }
   }
 
@@ -245,6 +268,8 @@ const drawLine = () => {
     silentFrames++;
     if (lastActive && silentFrames > SILENT_FRAME_LIMIT) {
       console.log('[viz] audio gone silent');
+      // Always return to idle after sustained silence
+      setVizMode('idle');
     }
   } else {
     silentFrames = 0;
@@ -284,13 +309,13 @@ export const initFullVisualizer = (canvasId = 'vizCanvas') => {
 
     // If we detect signal but mode is idle, switch to line
     if (sdkRms > ACTIVE_THRESHOLD && mode !== 'line') {
-      setVizMode('line');
+      internalSetMode('line');
     }
     // If idle or line drawing
-    if (mode === 'line') drawLine(); else drawIdle(tSec);
+  if (mode === 'line') drawLine(); else drawIdle(tSec);
     // If no signal and no playing media elements, go idle
     if (sdkRms <= ACTIVE_THRESHOLD && playingEls.size === 0 && mode !== 'idle') {
-      setVizMode('idle');
+      internalSetMode('idle');
     }
     rafId = requestAnimationFrame(tick);
   };
