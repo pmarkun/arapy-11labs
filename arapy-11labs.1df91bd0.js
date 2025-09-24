@@ -160,15 +160,15 @@
       });
     }
   }
-})({"5snBN":[function(require,module,exports,__globalThis) {
+})({"aEb5F":[function(require,module,exports,__globalThis) {
 var global = arguments[3];
 var HMR_HOST = null;
 var HMR_PORT = null;
-var HMR_SERVER_PORT = 45991;
+var HMR_SERVER_PORT = 1234;
 var HMR_SECURE = false;
 var HMR_ENV_HASH = "439701173a9199ea";
 var HMR_USE_SSE = false;
-module.bundle.HMR_BUNDLE_ID = "a726bb8fe02fbd41";
+module.bundle.HMR_BUNDLE_ID = "e4fc2bc01df91bd0";
 "use strict";
 /* global HMR_HOST, HMR_PORT, HMR_SERVER_PORT, HMR_ENV_HASH, HMR_SECURE, HMR_USE_SSE, chrome, browser, __parcel__import__, __parcel__importScripts__, ServiceWorkerGlobalScope */ /*::
 import type {
@@ -666,186 +666,22 @@ function hmrAccept(bundle /*: ParcelRequire */ , id /*: string */ ) {
     }
 }
 
-},{}],"jOXmm":[function(require,module,exports,__globalThis) {
-// Importa o Conversation do pacote @11labs/client
-var _client = require("@11labs/client");
-var _visualizerJs = require("./visualizer.js");
-const startBtn = document.getElementById('startBtn');
-const stopBtn = document.getElementById('stopBtn');
-const statusEl = document.getElementById('status');
-let conversationInstance = null;
-let audio = null;
-// Visualizer state is managed in visualizer.js
-// on page load: check for name and id parameters in url, then set the <span id=name> object
-const urlParams = new URLSearchParams(window.location.search);
-let config = {
-    name: urlParams.get('name'),
-    agentId: urlParams.get('id'),
-    mode: urlParams.get('mode') || 'default'
-};
-//try to load  a {name}.json from the server overwriting the whole config object
-const loadConfig = async ()=>{
-    if (!config.agentId) try {
-        const response = await fetch(`agents/${config.name}.json`);
-        const data = await response.json();
-        config = data;
-        console.log('Config loaded:', config);
-    } catch (error) {
-        console.error('Error loading config:', error);
-    }
-    document.getElementById('name').textContent = config.name;
-    if (!config.agentId) {
-        const startBtn = document.getElementById('startBtn');
-        startBtn.disabled = true;
-        startBtn.innerText = "Agente n\xe3o encontrado!";
-    }
-};
-loadConfig();
-// Função para atualizar o status na interface
-const updateStatus = (status)=>{
-    statusEl.textContent = "Status: " + status;
-};
-// Função para iniciar a conversa
-async function startConversation() {
-    try {
-        // Primeiro, solicite acesso ao microfone e explique o porquê ao usuário
-        await navigator.mediaDevices.getUserMedia({
-            audio: true
-        });
-        updateStatus('Microfone liberado');
-        //Play an mp3 file and wait for it to finish
-        if (config.startAudio) {
-            startBtn.classList.add('hidden');
-            stopBtn.classList.remove('hidden');
-            audio = new Audio(config.startAudio);
-            try {
-                audio.crossOrigin = 'anonymous';
-            } catch  {}
-            if (config.mode === 'full') {
-                await (0, _visualizerJs.connectMediaEl)(audio);
-                (0, _visualizerJs.updateVisualizerMode)('line');
-            }
-            audio.play();
-            updateStatus("Reproduzindo \xe1udio de boas-vindas");
-            await new Promise((resolve)=>{
-                audio.onended = ()=>{
-                    if (config.mode === 'full') (0, _visualizerJs.updateVisualizerMode)('idle');
-                    resolve();
-                };
-            });
-        }
-        // Inicia a sessão de conversa com o agente
-        //Parse o ID do agente a partir da URL, parametro id
-        conversationInstance = await (0, _client.Conversation).startSession({
-            agentId: config.agentId,
-            // Callbacks opcionais:
-            onConnect: ()=>{
-                console.log('Conectado ao agente!');
-                updateStatus('Conectado');
-            },
-            onDisconnect: ()=>{
-                console.log("Conex\xe3o encerrada.");
-                updateStatus('Desconectado');
-            },
-            onMessage: (message)=>{
-                console.log('Mensagem recebida:', message);
-            // Aqui você pode, por exemplo, atualizar a interface com transcrições ou processar o áudio recebido.
-            },
-            onError: (error)=>{
-                console.error("Erro na sess\xe3o:", error);
-                updateStatus('Erro');
-            },
-            onStatusChange: (status)=>{
-                console.log('Status alterado:', status);
-            },
-            onModeChange: (mode)=>{
-                console.log('Modo alterado:', mode);
-                // Control visualization directly based on SDK mode
-                try {
-                    if (config.mode === 'full') {
-                        if (mode.mode == 'speaking') {
-                            (0, _visualizerJs.updateVisualizerMode)('line');
-                            console.log('[viz] speaking!!!');
-                        } else {
-                            // Any other mode (listening, idle, etc.) goes to circle
-                            (0, _visualizerJs.updateVisualizerMode)('idle');
-                            console.log('[viz] idle!');
-                        }
-                    }
-                } catch  {}
-            }
-        });
-        // Try to hook SDK audio for visualization
-        if (config.mode === 'full') {
-            await (0, _visualizerJs.hookConversationAudio)(conversationInstance);
-            (0, _visualizerJs.setActiveConversation)(conversationInstance);
-        }
-    } catch (error) {
-        console.error('Erro ao iniciar a conversa:', error);
-        updateStatus('Erro ao iniciar');
-    }
-}
-// Função para encerrar a conversa
-async function endConversation() {
-    if (audio) {
-        audio.pause();
-        audio = null;
-    }
-    // Return to idle
-    (0, _visualizerJs.updateVisualizerMode)('idle');
-    if (conversationInstance) {
-        await conversationInstance.endSession();
-        conversationInstance = null;
-    }
-    updateStatus('Desconectado');
-    startBtn.classList.remove('hidden');
-    stopBtn.classList.add('hidden');
-}
-// Eventos dos botões
-startBtn.addEventListener('click', startConversation);
-stopBtn.addEventListener('click', endConversation);
-// Full mode UI wiring: toggle layout and click-to-start anywhere
-const cardEl = document.getElementById('card');
-const fullModeEl = document.getElementById('fullMode');
-if (config.mode === 'full') {
-    // Hide card, show overlay
-    if (cardEl) cardEl.classList.add('hidden');
-    if (fullModeEl) fullModeEl.classList.remove('hidden');
-    (0, _visualizerJs.initFullVisualizer)('vizCanvas');
-    (0, _visualizerJs.observeMediaPlayback)();
-    // Click anywhere to start/stop
-    fullModeEl.addEventListener('click', async ()=>{
-        if (!conversationInstance) await startConversation();
-        else await endConversation();
-    });
-    // Idle by default
-    (0, _visualizerJs.updateVisualizerMode)('idle');
-}
-
-},{"@11labs/client":"2ysAp","./visualizer.js":"huxr5"}],"2ysAp":[function(require,module,exports,__globalThis) {
-var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
-parcelHelpers.defineInteropFlag(exports);
-parcelHelpers.export(exports, "Conversation", ()=>m);
-parcelHelpers.export(exports, "postOverallFeedback", ()=>v);
+},{}],"llgqt":[function(require,module,exports,__globalThis) {
 function e() {
-    return e = Object.assign ? Object.assign.bind() : function(e) {
+    return (e = Object.assign ? Object.assign.bind() : function(e) {
         for(var n = 1; n < arguments.length; n++){
             var t = arguments[n];
             for(var o in t)({}).hasOwnProperty.call(t, o) && (e[o] = t[o]);
         }
         return e;
-    }, e.apply(null, arguments);
+    }).apply(null, arguments);
 }
-function n(e) {
-    for(var n = window.atob(e), t = n.length, o = new Uint8Array(t), r = 0; r < t; r++)o[r] = n.charCodeAt(r);
-    return o.buffer;
-}
-var t = new Blob([
+var n = new Blob([
     '\n      const BIAS = 0x84;\n      const CLIP = 32635;\n      const encodeTable = [\n        0,0,1,1,2,2,2,2,3,3,3,3,3,3,3,3,\n        4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,\n        5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,\n        5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,\n        6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,\n        6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,\n        6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,\n        6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,\n        7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,\n        7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,\n        7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,\n        7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,\n        7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,\n        7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,\n        7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,\n        7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7\n      ];\n      \n      function encodeSample(sample) {\n        let sign;\n        let exponent;\n        let mantissa;\n        let muLawSample;\n        sign = (sample >> 8) & 0x80;\n        if (sign !== 0) sample = -sample;\n        sample = sample + BIAS;\n        if (sample > CLIP) sample = CLIP;\n        exponent = encodeTable[(sample>>7) & 0xFF];\n        mantissa = (sample >> (exponent+3)) & 0x0F;\n        muLawSample = ~(sign | (exponent << 4) | mantissa);\n        \n        return muLawSample;\n      }\n    \n      class RawAudioProcessor extends AudioWorkletProcessor {\n        constructor() {\n          super();\n                    \n          this.port.onmessage = ({ data }) => {\n            switch (data.type) {\n              case "setFormat":\n                this.isMuted = false;\n                this.buffer = []; // Initialize an empty buffer\n                this.bufferSize = data.sampleRate / 4;\n                this.format = data.format;\n\n                if (globalThis.LibSampleRate && sampleRate !== data.sampleRate) {\n                  globalThis.LibSampleRate.create(1, sampleRate, data.sampleRate).then(resampler => {\n                    this.resampler = resampler;\n                  });\n                }\n                break;\n              case "setMuted":\n                this.isMuted = data.isMuted;\n                break;\n            }\n          };\n        }\n        process(inputs) {\n          if (!this.buffer) {\n            return true;\n          }\n          \n          const input = inputs[0]; // Get the first input node\n          if (input.length > 0) {\n            let channelData = input[0]; // Get the first channel\'s data\n\n            // Resample the audio if necessary\n            if (this.resampler) {\n              channelData = this.resampler.full(channelData);\n            }\n\n            // Add channel data to the buffer\n            this.buffer.push(...channelData);\n            // Get max volume \n            let sum = 0.0;\n            for (let i = 0; i < channelData.length; i++) {\n              sum += channelData[i] * channelData[i];\n            }\n            const maxVolume = Math.sqrt(sum / channelData.length);\n            // Check if buffer size has reached or exceeded the threshold\n            if (this.buffer.length >= this.bufferSize) {\n              const float32Array = this.isMuted \n                ? new Float32Array(this.buffer.length)\n                : new Float32Array(this.buffer);\n\n              let encodedArray = this.format === "ulaw"\n                ? new Uint8Array(float32Array.length)\n                : new Int16Array(float32Array.length);\n\n              // Iterate through the Float32Array and convert each sample to PCM16\n              for (let i = 0; i < float32Array.length; i++) {\n                // Clamp the value to the range [-1, 1]\n                let sample = Math.max(-1, Math.min(1, float32Array[i]));\n\n                // Scale the sample to the range [-32768, 32767]\n                let value = sample < 0 ? sample * 32768 : sample * 32767;\n                if (this.format === "ulaw") {\n                  value = encodeSample(Math.round(value));\n                }\n\n                encodedArray[i] = value;\n              }\n\n              // Send the buffered data to the main script\n              this.port.postMessage([encodedArray, maxVolume]);\n\n              // Clear the buffer after sending\n              this.buffer = [];\n            }\n          }\n          return true; // Continue processing\n        }\n      }\n      registerProcessor("raw-audio-processor", RawAudioProcessor);\n  '
 ], {
     type: "application/javascript"
-}), o = URL.createObjectURL(t);
-function r() {
+}), t = URL.createObjectURL(n);
+function o() {
     return [
         "iPad Simulator",
         "iPhone Simulator",
@@ -855,44 +691,44 @@ function r() {
         "iPod"
     ].includes(navigator.platform) || navigator.userAgent.includes("Mac") && "ontouchend" in document;
 }
-var i = /*#__PURE__*/ function() {
+var r = function() {
     function e(e, n, t, o) {
         this.context = void 0, this.analyser = void 0, this.worklet = void 0, this.inputStream = void 0, this.context = e, this.analyser = n, this.worklet = t, this.inputStream = o;
     }
     e.create = function(n) {
-        var t = n.sampleRate, i = n.format, a = n.preferHeadphonesForIosDevices;
+        var r = n.sampleRate, a = n.format, s = n.preferHeadphonesForIosDevices;
         try {
-            var s = null, u = null;
+            var i = null, u = null;
             return Promise.resolve(function(n, c) {
                 try {
                     var l = function() {
                         function n() {
                             function n() {
-                                return Promise.resolve(s.audioWorklet.addModule(o)).then(function() {
+                                return Promise.resolve(i.audioWorklet.addModule(t)).then(function() {
                                     return Promise.resolve(navigator.mediaDevices.getUserMedia({
                                         audio: c
                                     })).then(function(n) {
-                                        var o = s.createMediaStreamSource(u = n), r = new AudioWorkletNode(s, "raw-audio-processor");
-                                        return r.port.postMessage({
+                                        var t = i.createMediaStreamSource(u = n), o = new AudioWorkletNode(i, "raw-audio-processor");
+                                        return o.port.postMessage({
                                             type: "setFormat",
-                                            format: i,
-                                            sampleRate: t
-                                        }), o.connect(a), a.connect(r), Promise.resolve(s.resume()).then(function() {
-                                            return new e(s, a, r, u);
+                                            format: a,
+                                            sampleRate: r
+                                        }), t.connect(s), s.connect(o), Promise.resolve(i.resume()).then(function() {
+                                            return new e(i, s, o, u);
                                         });
                                     });
                                 });
                             }
-                            var r = navigator.mediaDevices.getSupportedConstraints().sampleRate, a = (s = new window.AudioContext(r ? {
-                                sampleRate: t
+                            var o = navigator.mediaDevices.getSupportedConstraints().sampleRate, s = (i = new window.AudioContext(o ? {
+                                sampleRate: r
                             } : {})).createAnalyser(), l = function() {
-                                if (!r) return Promise.resolve(s.audioWorklet.addModule("https://cdn.jsdelivr.net/npm/@alexanderolsen/libsamplerate-js@2.1.2/dist/libsamplerate.worklet.js")).then(function() {});
+                                if (!o) return Promise.resolve(i.audioWorklet.addModule("https://cdn.jsdelivr.net/npm/@alexanderolsen/libsamplerate-js@2.1.2/dist/libsamplerate.worklet.js")).then(function() {});
                             }();
                             return l && l.then ? l.then(n) : n();
                         }
                         var c = {
                             sampleRate: {
-                                ideal: t
+                                ideal: r
                             },
                             echoCancellation: {
                                 ideal: !0
@@ -901,7 +737,7 @@ var i = /*#__PURE__*/ function() {
                                 ideal: !0
                             }
                         }, l = function() {
-                            if (r() && a) return Promise.resolve(window.navigator.mediaDevices.enumerateDevices()).then(function(e) {
+                            if (o() && s) return Promise.resolve(window.navigator.mediaDevices.enumerateDevices()).then(function(e) {
                                 var n = e.find(function(e) {
                                     return "audioinput" === e.kind && [
                                         "airpod",
@@ -926,7 +762,7 @@ var i = /*#__PURE__*/ function() {
                 var n, t;
                 throw null == (n = u) || n.getTracks().forEach(function(e) {
                     return e.stop();
-                }), null == (t = s) || t.close(), e;
+                }), null == (t = i) || t.close(), e;
             }));
         } catch (e) {
             return Promise.reject(e);
@@ -951,7 +787,7 @@ var i = /*#__PURE__*/ function() {
     '\n      const decodeTable = [0,132,396,924,1980,4092,8316,16764];\n      \n      export function decodeSample(muLawSample) {\n        let sign;\n        let exponent;\n        let mantissa;\n        let sample;\n        muLawSample = ~muLawSample;\n        sign = (muLawSample & 0x80);\n        exponent = (muLawSample >> 4) & 0x07;\n        mantissa = muLawSample & 0x0F;\n        sample = decodeTable[exponent] + (mantissa << (exponent+3));\n        if (sign !== 0) sample = -sample;\n\n        return sample;\n      }\n      \n      class AudioConcatProcessor extends AudioWorkletProcessor {\n        constructor() {\n          super();\n          this.buffers = []; // Initialize an empty buffer\n          this.cursor = 0;\n          this.currentBuffer = null;\n          this.wasInterrupted = false;\n          this.finished = false;\n          \n          this.port.onmessage = ({ data }) => {\n            switch (data.type) {\n              case "setFormat":\n                this.format = data.format;\n                break;\n              case "buffer":\n                this.wasInterrupted = false;\n                this.buffers.push(\n                  this.format === "ulaw"\n                    ? new Uint8Array(data.buffer)\n                    : new Int16Array(data.buffer)\n                );\n                break;\n              case "interrupt":\n                this.wasInterrupted = true;\n                break;\n              case "clearInterrupted":\n                if (this.wasInterrupted) {\n                  this.wasInterrupted = false;\n                  this.buffers = [];\n                  this.currentBuffer = null;\n                }\n            }\n          };\n        }\n        process(_, outputs) {\n          let finished = false;\n          const output = outputs[0][0];\n          for (let i = 0; i < output.length; i++) {\n            if (!this.currentBuffer) {\n              if (this.buffers.length === 0) {\n                finished = true;\n                break;\n              }\n              this.currentBuffer = this.buffers.shift();\n              this.cursor = 0;\n            }\n\n            let value = this.currentBuffer[this.cursor];\n            if (this.format === "ulaw") {\n              value = decodeSample(value);\n            }\n            output[i] = value / 32768;\n            this.cursor++;\n\n            if (this.cursor >= this.currentBuffer.length) {\n              this.currentBuffer = null;\n            }\n          }\n\n          if (this.finished !== finished) {\n            this.finished = finished;\n            this.port.postMessage({ type: "process", finished });\n          }\n\n          return true; // Continue processing\n        }\n      }\n\n      registerProcessor("audio-concat-processor", AudioConcatProcessor);\n    '
 ], {
     type: "application/javascript"
-}), s = URL.createObjectURL(a), u = /*#__PURE__*/ function() {
+}), s = URL.createObjectURL(a), i = function() {
     function e(e, n, t, o) {
         this.context = void 0, this.analyser = void 0, this.gain = void 0, this.worklet = void 0, this.context = e, this.analyser = n, this.gain = t, this.worklet = o;
     }
@@ -959,24 +795,23 @@ var i = /*#__PURE__*/ function() {
         var t = n.sampleRate, o = n.format;
         try {
             var r = null;
-            return Promise.resolve(function(n, i) {
+            return Promise.resolve(function(n, a) {
                 try {
-                    var a = (u = (r = new AudioContext({
+                    var i, u, c = (i = (r = new AudioContext({
                         sampleRate: t
-                    })).createAnalyser(), (c = r.createGain()).connect(u), u.connect(r.destination), Promise.resolve(r.audioWorklet.addModule(s)).then(function() {
+                    })).createAnalyser(), (u = r.createGain()).connect(i), i.connect(r.destination), Promise.resolve(r.audioWorklet.addModule(s)).then(function() {
                         var n = new AudioWorkletNode(r, "audio-concat-processor");
                         return n.port.postMessage({
                             type: "setFormat",
                             format: o
-                        }), n.connect(c), Promise.resolve(r.resume()).then(function() {
-                            return new e(r, u, c, n);
+                        }), n.connect(u), Promise.resolve(r.resume()).then(function() {
+                            return new e(r, i, u, n);
                         });
                     }));
                 } catch (e) {
-                    return i(e);
+                    return a(e);
                 }
-                var u, c;
-                return a && a.then ? a.then(void 0, i) : a;
+                return c && c.then ? c.then(void 0, a) : c;
             }(0, function(e) {
                 var n;
                 throw null == (n = r) || n.close(), e;
@@ -991,11 +826,7 @@ var i = /*#__PURE__*/ function() {
             return Promise.reject(e);
         }
     }, e;
-}();
-function c(e) {
-    return !!e.type;
-}
-var l = /*#__PURE__*/ function() {
+}(), u = function() {
     function e(e, n, t, o) {
         var r = this;
         this.socket = void 0, this.conversationId = void 0, this.inputFormat = void 0, this.outputFormat = void 0, this.queue = [], this.disconnectionDetails = null, this.onDisconnectCallback = null, this.onMessageCallback = null, this.socket = e, this.conversationId = n, this.inputFormat = t, this.outputFormat = o, this.socket.addEventListener("error", function(e) {
@@ -1018,7 +849,7 @@ var l = /*#__PURE__*/ function() {
         }), this.socket.addEventListener("message", function(e) {
             try {
                 var n = JSON.parse(e.data);
-                if (!c(n)) return;
+                if (!n.type) return;
                 r.onMessageCallback ? r.onMessageCallback(n) : r.queue.push(n);
             } catch (e) {}
         });
@@ -1028,23 +859,23 @@ var l = /*#__PURE__*/ function() {
             var t = null;
             return Promise.resolve(function(o, r) {
                 try {
-                    var i = (s = null != (a = n.origin) ? a : "wss://api.elevenlabs.io", u = n.signedUrl ? n.signedUrl : s + "/v1/convai/conversation?agent_id=" + n.agentId, l = [
+                    var a, s, i, u, l = (s = null != (a = n.origin) ? a : "wss://api.elevenlabs.io", i = n.signedUrl ? n.signedUrl : s + "/v1/convai/conversation?agent_id=" + n.agentId, u = [
                         "convai"
-                    ], n.authorization && l.push("bearer." + n.authorization), t = new WebSocket(u, l), Promise.resolve(new Promise(function(e, o) {
+                    ], n.authorization && u.push("bearer." + n.authorization), t = new WebSocket(i, u), Promise.resolve(new Promise(function(e, o) {
                         t.addEventListener("open", function() {
-                            var e, o, r, i, a, s = {
+                            var e, o, r, a, s, i = {
                                 type: "conversation_initiation_client_data"
                             };
-                            n.overrides && (s.conversation_config_override = {
+                            n.overrides && (i.conversation_config_override = {
                                 agent: {
                                     prompt: null == (o = n.overrides.agent) ? void 0 : o.prompt,
                                     first_message: null == (r = n.overrides.agent) ? void 0 : r.firstMessage,
-                                    language: null == (i = n.overrides.agent) ? void 0 : i.language
+                                    language: null == (a = n.overrides.agent) ? void 0 : a.language
                                 },
                                 tts: {
-                                    voice_id: null == (a = n.overrides.tts) ? void 0 : a.voiceId
+                                    voice_id: null == (s = n.overrides.tts) ? void 0 : s.voiceId
                                 }
-                            }), n.customLlmExtraBody && (s.custom_llm_extra_body = n.customLlmExtraBody), n.dynamicVariables && (s.dynamic_variables = n.dynamicVariables), null == (e = t) || e.send(JSON.stringify(s));
+                            }), n.customLlmExtraBody && (i.custom_llm_extra_body = n.customLlmExtraBody), n.dynamicVariables && (i.dynamic_variables = n.dynamicVariables), null == (e = t) || e.send(JSON.stringify(i));
                         }, {
                             once: !0
                         }), t.addEventListener("error", function(e) {
@@ -1053,19 +884,18 @@ var l = /*#__PURE__*/ function() {
                             }, 0);
                         }), t.addEventListener("close", o), t.addEventListener("message", function(n) {
                             var t = JSON.parse(n.data);
-                            c(t) && ("conversation_initiation_metadata" === t.type ? e(t.conversation_initiation_metadata_event) : console.warn("First received message is not conversation metadata."));
+                            t.type && ("conversation_initiation_metadata" === t.type ? e(t.conversation_initiation_metadata_event) : console.warn("First received message is not conversation metadata."));
                         }, {
                             once: !0
                         });
                     })).then(function(n) {
-                        var o = n.conversation_id, r = n.agent_output_audio_format, i = n.user_input_audio_format, a = d(null != i ? i : "pcm_16000"), s = d(r);
-                        return new e(t, o, a, s);
+                        var o = n.conversation_id, r = n.agent_output_audio_format, a = n.user_input_audio_format, s = c(null != a ? a : "pcm_16000"), i = c(r);
+                        return new e(t, o, s, i);
                     }));
                 } catch (e) {
                     return r(e);
                 }
-                var a, s, u, l;
-                return i && i.then ? i.then(void 0, r) : i;
+                return l && l.then ? l.then(void 0, r) : l;
             }(0, function(e) {
                 var n;
                 throw null == (n = t) || n.close(), e;
@@ -1088,20 +918,20 @@ var l = /*#__PURE__*/ function() {
         this.disconnectionDetails || (this.disconnectionDetails = e, null == (n = this.onDisconnectCallback) || n.call(this, e));
     }, e;
 }();
-function d(e) {
+function c(e) {
     var n = e.split("_"), t = n[0], o = n[1];
     if (![
         "pcm",
         "ulaw"
-    ].includes(t)) throw new Error("Invalid format: " + e);
+    ].includes(t)) throw Error("Invalid format: " + e);
     var r = parseInt(o);
-    if (isNaN(r)) throw new Error("Invalid sample rate: " + o);
+    if (isNaN(r)) throw Error("Invalid sample rate: " + o);
     return {
         format: t,
         sampleRate: r
     };
 }
-function h(e, n) {
+function l(e, n) {
     try {
         var t = e();
     } catch (e) {
@@ -1109,9 +939,9 @@ function h(e, n) {
     }
     return t && t.then ? t.then(void 0, n) : t;
 }
-var p = {
+var d = {
     clientTools: {}
-}, f = {
+}, h = {
     onConnect: function() {},
     onDebug: function() {},
     onDisconnect: function() {},
@@ -1121,11 +951,11 @@ var p = {
     onModeChange: function() {},
     onStatusChange: function() {},
     onCanSendFeedbackChange: function() {}
-}, m = /*#__PURE__*/ function() {
-    function t(e, t, o, r, i) {
-        var a = this, s = this, u = this;
+}, p = function() {
+    function n(e, n, t, o, r) {
+        var a = this, s = this, i = this;
         this.options = void 0, this.connection = void 0, this.input = void 0, this.output = void 0, this.wakeLock = void 0, this.lastInterruptTimestamp = 0, this.mode = "listening", this.status = "connecting", this.inputFrequencyData = void 0, this.outputFrequencyData = void 0, this.volume = 1, this.currentEventId = 1, this.lastFeedbackEventId = 1, this.canSendFeedback = !1, this.endSession = function() {
-            return u.endSessionWithDetails({
+            return i.endSessionWithDetails({
                 reason: "user"
             });
         }, this.endSessionWithDetails = function(e) {
@@ -1139,7 +969,7 @@ var p = {
                 };
                 if ("connected" !== a.status && "connecting" !== a.status) return Promise.resolve();
                 a.updateStatus("disconnecting");
-                var t = h(function() {
+                var t = l(function() {
                     var e;
                     return Promise.resolve(null == (e = a.wakeLock) ? void 0 : e.release()).then(function() {
                         a.wakeLock = null;
@@ -1150,16 +980,16 @@ var p = {
                 return Promise.reject(e);
             }
         }, this.updateMode = function(e) {
-            e !== u.mode && (u.mode = e, u.options.onModeChange({
+            e !== i.mode && (i.mode = e, i.options.onModeChange({
                 mode: e
             }));
         }, this.updateStatus = function(e) {
-            e !== u.status && (u.status = e, u.options.onStatusChange({
+            e !== i.status && (i.status = e, i.options.onStatusChange({
                 status: e
             }));
         }, this.updateCanSendFeedback = function() {
-            var e = u.currentEventId !== u.lastFeedbackEventId;
-            u.canSendFeedback !== e && (u.canSendFeedback = e, u.options.onCanSendFeedbackChange({
+            var e = i.currentEventId !== i.lastFeedbackEventId;
+            i.canSendFeedback !== e && (i.canSendFeedback = e, i.options.onCanSendFeedbackChange({
                 canSendFeedback: e
             }));
         }, this.onMessage = function(e) {
@@ -1185,7 +1015,7 @@ var p = {
                     case "client_tool_call":
                         return Promise.resolve(function() {
                             if (s.options.clientTools.hasOwnProperty(e.client_tool_call.tool_name)) {
-                                var n = h(function() {
+                                var n = l(function() {
                                     return Promise.resolve(s.options.clientTools[e.client_tool_call.tool_name](e.client_tool_call.parameters)).then(function(n) {
                                         var t = "object" == typeof n ? JSON.stringify(n) : String(n);
                                         s.connection.sendMessage({
@@ -1232,118 +1062,116 @@ var p = {
                 return Promise.reject(e);
             }
         }, this.onInputWorkletMessage = function(e) {
-            var n, t;
-            "connected" === u.status && u.connection.sendMessage({
-                user_audio_chunk: (n = e.data[0].buffer, t = new Uint8Array(n), window.btoa(String.fromCharCode.apply(String, t)))
+            var n;
+            "connected" === i.status && i.connection.sendMessage({
+                user_audio_chunk: (n = new Uint8Array(e.data[0].buffer), window.btoa(String.fromCharCode.apply(String, n)))
             });
         }, this.onOutputWorkletMessage = function(e) {
             var n = e.data;
-            "process" === n.type && u.updateMode(n.finished ? "listening" : "speaking");
+            "process" === n.type && i.updateMode(n.finished ? "listening" : "speaking");
         }, this.addAudioBase64Chunk = function(e) {
-            u.output.gain.gain.value = u.volume, u.output.worklet.port.postMessage({
+            i.output.gain.gain.value = i.volume, i.output.worklet.port.postMessage({
                 type: "clearInterrupted"
-            }), u.output.worklet.port.postMessage({
+            }), i.output.worklet.port.postMessage({
                 type: "buffer",
-                buffer: n(e)
+                buffer: function(e) {
+                    for(var n = window.atob(e), t = n.length, o = new Uint8Array(t), r = 0; r < t; r++)o[r] = n.charCodeAt(r);
+                    return o.buffer;
+                }(e)
             });
         }, this.fadeOutAudio = function() {
-            u.updateMode("listening"), u.output.worklet.port.postMessage({
+            i.updateMode("listening"), i.output.worklet.port.postMessage({
                 type: "interrupt"
-            }), u.output.gain.gain.exponentialRampToValueAtTime(1e-4, u.output.context.currentTime + 2), setTimeout(function() {
-                u.output.gain.gain.value = u.volume, u.output.worklet.port.postMessage({
+            }), i.output.gain.gain.exponentialRampToValueAtTime(1e-4, i.output.context.currentTime + 2), setTimeout(function() {
+                i.output.gain.gain.value = i.volume, i.output.worklet.port.postMessage({
                     type: "clearInterrupted"
                 });
             }, 2e3);
         }, this.onError = function(e, n) {
-            console.error(e, n), u.options.onError(e, n);
+            console.error(e, n), i.options.onError(e, n);
         }, this.calculateVolume = function(e) {
             if (0 === e.length) return 0;
             for(var n = 0, t = 0; t < e.length; t++)n += e[t] / 255;
             return (n /= e.length) < 0 ? 0 : n > 1 ? 1 : n;
         }, this.getId = function() {
-            return u.connection.conversationId;
+            return i.connection.conversationId;
         }, this.isOpen = function() {
-            return "connected" === u.status;
+            return "connected" === i.status;
         }, this.setVolume = function(e) {
-            u.volume = e.volume;
+            i.volume = e.volume;
         }, this.setMicMuted = function(e) {
-            u.input.setMuted(e);
+            i.input.setMuted(e);
         }, this.getInputByteFrequencyData = function() {
-            return null != u.inputFrequencyData || (u.inputFrequencyData = new Uint8Array(u.input.analyser.frequencyBinCount)), u.input.analyser.getByteFrequencyData(u.inputFrequencyData), u.inputFrequencyData;
+            return null != i.inputFrequencyData || (i.inputFrequencyData = new Uint8Array(i.input.analyser.frequencyBinCount)), i.input.analyser.getByteFrequencyData(i.inputFrequencyData), i.inputFrequencyData;
         }, this.getOutputByteFrequencyData = function() {
-            return null != u.outputFrequencyData || (u.outputFrequencyData = new Uint8Array(u.output.analyser.frequencyBinCount)), u.output.analyser.getByteFrequencyData(u.outputFrequencyData), u.outputFrequencyData;
+            return null != i.outputFrequencyData || (i.outputFrequencyData = new Uint8Array(i.output.analyser.frequencyBinCount)), i.output.analyser.getByteFrequencyData(i.outputFrequencyData), i.outputFrequencyData;
         }, this.getInputVolume = function() {
-            return u.calculateVolume(u.getInputByteFrequencyData());
+            return i.calculateVolume(i.getInputByteFrequencyData());
         }, this.getOutputVolume = function() {
-            return u.calculateVolume(u.getOutputByteFrequencyData());
+            return i.calculateVolume(i.getOutputByteFrequencyData());
         }, this.sendFeedback = function(e) {
-            u.canSendFeedback ? (u.connection.sendMessage({
+            i.canSendFeedback ? (i.connection.sendMessage({
                 type: "feedback",
                 score: e ? "like" : "dislike",
-                event_id: u.currentEventId
-            }), u.lastFeedbackEventId = u.currentEventId, u.updateCanSendFeedback()) : console.warn(0 === u.lastFeedbackEventId ? "Cannot send feedback: the conversation has not started yet." : "Cannot send feedback: feedback has already been sent for the current response.");
+                event_id: i.currentEventId
+            }), i.lastFeedbackEventId = i.currentEventId, i.updateCanSendFeedback()) : console.warn(0 === i.lastFeedbackEventId ? "Cannot send feedback: the conversation has not started yet." : "Cannot send feedback: feedback has already been sent for the current response.");
         }, this.sendContextualUpdate = function(e) {
-            u.connection.sendMessage({
+            i.connection.sendMessage({
                 type: "contextual_update",
                 text: e
             });
-        }, this.options = e, this.connection = t, this.input = o, this.output = r, this.wakeLock = i, this.options.onConnect({
-            conversationId: t.conversationId
+        }, this.options = e, this.connection = n, this.input = t, this.output = o, this.wakeLock = r, this.options.onConnect({
+            conversationId: n.conversationId
         }), this.connection.onDisconnect(this.endSessionWithDetails), this.connection.onMessage(this.onMessage), this.input.worklet.port.onmessage = this.onInputWorkletMessage, this.output.worklet.port.onmessage = this.onOutputWorkletMessage, this.updateStatus("connected");
     }
-    return t.startSession = function(n) {
+    return n.startSession = function(t) {
         try {
-            var o = function() {
-                return h(function() {
+            var a = function() {
+                return l(function() {
                     return Promise.resolve(navigator.mediaDevices.getUserMedia({
                         audio: !0
-                    })).then(function(o) {
-                        var h;
-                        function p() {
-                            return Promise.resolve(l.create(n)).then(function(o) {
-                                return c = o, Promise.resolve(Promise.all([
-                                    i.create(e({}, c.inputFormat, {
-                                        preferHeadphonesForIosDevices: n.preferHeadphonesForIosDevices
+                    })).then(function(a) {
+                        function l() {
+                            return Promise.resolve(u.create(t)).then(function(o) {
+                                return p = o, Promise.resolve(Promise.all([
+                                    r.create(e({}, p.inputFormat, {
+                                        preferHeadphonesForIosDevices: t.preferHeadphonesForIosDevices
                                     })),
-                                    u.create(c.outputFormat)
+                                    i.create(p.outputFormat)
                                 ])).then(function(e) {
-                                    var n;
-                                    return s = e[0], d = e[1], null == (n = m) || n.getTracks().forEach(function(e) {
+                                    var t;
+                                    return c = e[0], f = e[1], null == (t = m) || t.getTracks().forEach(function(e) {
                                         return e.stop();
-                                    }), m = null, new t(a, c, s, d, v);
+                                    }), m = null, new n(s, p, c, f, v);
                                 });
                             });
                         }
-                        m = o;
-                        var f, g = null != (h = n.connectionDelay) ? h : {
+                        m = a;
+                        var d, h, g, y = null != (h = t.connectionDelay) ? h : {
                             default: 0,
                             android: 3e3
-                        }, y = g.default;
-                        if (/android/i.test(navigator.userAgent)) y = null != (f = g.android) ? f : y;
-                        else if (r()) {
-                            var _;
-                            y = null != (_ = g.ios) ? _ : y;
-                        }
-                        var b = function() {
-                            if (y > 0) return Promise.resolve(new Promise(function(e) {
-                                return setTimeout(e, y);
+                        }, _ = y.default;
+                        /android/i.test(navigator.userAgent) ? _ = null != (g = y.android) ? g : _ : o() && (_ = null != (d = y.ios) ? d : _);
+                        var w = function() {
+                            if (_ > 0) return Promise.resolve(new Promise(function(e) {
+                                return setTimeout(e, _);
                             })).then(function() {});
                         }();
-                        return b && b.then ? b.then(p) : p();
+                        return w && w.then ? w.then(l) : l();
                     });
                 }, function(e) {
                     var n, t, o;
-                    return a.onStatusChange({
+                    return s.onStatusChange({
                         status: "disconnected"
                     }), null == (n = m) || n.getTracks().forEach(function(e) {
                         return e.stop();
-                    }), null == (t = c) || t.close(), Promise.resolve(null == (o = s) ? void 0 : o.close()).then(function() {
+                    }), null == (t = p) || t.close(), Promise.resolve(null == (o = c) ? void 0 : o.close()).then(function() {
                         var n;
-                        return Promise.resolve(null == (n = d) ? void 0 : n.close()).then(function() {
+                        return Promise.resolve(null == (n = f) ? void 0 : n.close()).then(function() {
                             function n() {
                                 throw e;
                             }
-                            var t = h(function() {
+                            var t = l(function() {
                                 var e;
                                 return Promise.resolve(null == (e = v) ? void 0 : e.release()).then(function() {
                                     v = null;
@@ -1353,350 +1181,86 @@ var p = {
                         });
                     });
                 });
-            }, a = e({}, p, f, n);
-            a.onStatusChange({
+            }, s = e({}, d, h, t);
+            s.onStatusChange({
                 status: "connecting"
-            }), a.onCanSendFeedbackChange({
+            }), s.onCanSendFeedbackChange({
                 canSendFeedback: !1
             });
-            var s = null, c = null, d = null, m = null, v = null, g = function(e) {
-                if (null == (e = n.useWakeLock) || e) {
-                    var t = h(function() {
+            var c = null, p = null, f = null, m = null, v = null, g = function(e) {
+                if (null == (e = t.useWakeLock) || e) {
+                    var n = l(function() {
                         return Promise.resolve(navigator.wakeLock.request("screen")).then(function(e) {
                             v = e;
                         });
                     }, function() {});
-                    if (t && t.then) return t.then(function() {});
+                    if (n && n.then) return n.then(function() {});
                 }
             }();
-            return Promise.resolve(g && g.then ? g.then(o) : o());
+            return Promise.resolve(g && g.then ? g.then(a) : a());
         } catch (e) {
             return Promise.reject(e);
         }
-    }, t;
+    }, n;
 }();
-function v(e, n, t) {
-    return void 0 === t && (t = "https://api.elevenlabs.io"), fetch(t + "/v1/convai/conversations/" + e + "/feedback", {
-        method: "POST",
-        body: JSON.stringify({
-            feedback: n ? "like" : "dislike"
-        }),
-        headers: {
-            "Content-Type": "application/json"
-        }
-    });
-}
-
-},{"@parcel/transformer-js/src/esmodule-helpers.js":"jnFvT"}],"jnFvT":[function(require,module,exports,__globalThis) {
-exports.interopDefault = function(a) {
-    return a && a.__esModule ? a : {
-        default: a
-    };
+const f = document.getElementById("startBtn"), m = document.getElementById("stopBtn"), v = document.getElementById("status");
+let g = null, y = null;
+const _ = new URLSearchParams(window.location.search);
+let w = {
+    name: _.get("name"),
+    agentId: _.get("id")
 };
-exports.defineInteropFlag = function(a) {
-    Object.defineProperty(a, '__esModule', {
-        value: true
-    });
+(async ()=>{
+    if (!w.agentId) try {
+        let e = await fetch(`agents/${w.name}.json`);
+        w = await e.json(), console.log("Config loaded:", w);
+    } catch (e) {
+        console.error("Error loading config:", e);
+    }
+    if (document.getElementById("name").textContent = w.name, !w.agentId) {
+        let e = document.getElementById("startBtn");
+        e.disabled = !0, e.innerText = "Agente n\xe3o encontrado!";
+    }
+})();
+const b = (e)=>{
+    v.textContent = "Status: " + e;
 };
-exports.exportAll = function(source, dest) {
-    Object.keys(source).forEach(function(key) {
-        if (key === 'default' || key === '__esModule' || Object.prototype.hasOwnProperty.call(dest, key)) return;
-        Object.defineProperty(dest, key, {
-            enumerable: true,
-            get: function() {
-                return source[key];
+async function k() {
+    try {
+        await navigator.mediaDevices.getUserMedia({
+            audio: !0
+        }), b("Microfone liberado"), w.startAudio && (f.classList.add("hidden"), m.classList.remove("hidden"), (y = new Audio(w.startAudio)).play(), b("Reproduzindo \xe1udio de boas-vindas"), await new Promise((e)=>{
+            y.onended = e;
+        })), g = await p.startSession({
+            agentId: w.agentId,
+            onConnect: ()=>{
+                console.log("Conectado ao agente!"), b("Conectado");
+            },
+            onDisconnect: ()=>{
+                console.log("Conex\xe3o encerrada."), b("Desconectado");
+            },
+            onMessage: (e)=>{
+                console.log("Mensagem recebida:", e);
+            },
+            onError: (e)=>{
+                console.error("Erro na sess\xe3o:", e), b("Erro");
+            },
+            onStatusChange: (e)=>{
+                console.log("Status alterado:", e);
+            },
+            onModeChange: (e)=>{
+                console.log("Modo alterado:", e);
             }
-        });
-    });
-    return dest;
-};
-exports.export = function(dest, destName, get) {
-    Object.defineProperty(dest, destName, {
-        enumerable: true,
-        get: get
-    });
-};
-
-},{}],"huxr5":[function(require,module,exports,__globalThis) {
-// Visualization module: canvas-based idle circle and reactive line driven by audio
-var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
-parcelHelpers.defineInteropFlag(exports);
-parcelHelpers.export(exports, "updateVisualizerMode", ()=>updateVisualizerMode);
-parcelHelpers.export(exports, "connectMediaEl", ()=>connectMediaEl);
-parcelHelpers.export(exports, "connectMediaStream", ()=>connectMediaStream);
-parcelHelpers.export(exports, "observeMediaPlayback", ()=>observeMediaPlayback);
-parcelHelpers.export(exports, "hookConversationAudio", ()=>hookConversationAudio);
-parcelHelpers.export(exports, "setActiveConversation", ()=>setActiveConversation);
-parcelHelpers.export(exports, "initFullVisualizer", ()=>initFullVisualizer);
-let audioCtx = null;
-let analyser = null;
-let dataArray = null;
-let rafId = null;
-let canvas = null;
-let ctx = null;
-let vizMode = 'idle'; // 'idle' | 'line'
-let silentGainNode = null;
-const mediaSourceMap = new WeakMap(); // HTMLMediaElement -> MediaElementAudioSourceNode
-const streamSourceMap = new WeakMap(); // MediaStream -> MediaStreamAudioSourceNode
-const playingEls = new Set();
-let activeConversation = null;
-let lastSdkBins = null;
-// Debug helpers
-let lastActive = false;
-let silentFrames = 0;
-const ACTIVE_THRESHOLD = 0.015; // RMS threshold
-const SILENT_FRAME_LIMIT = 20; // ~0.33s at 60fps
-const ensureAudioContext = async ()=>{
-    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    if (audioCtx.state === 'suspended') try {
-        await audioCtx.resume();
-    } catch  {}
-};
-const updateVisualizerMode = (mode)=>{
-    if (mode !== vizMode) {
-        console.log('[viz] mode ->', mode);
-        vizMode = mode;
-    }
-};
-const buildAnalyserChain = (sourceNode)=>{
-    analyser = audioCtx && audioCtx.createAnalyser ? audioCtx.createAnalyser() : null;
-    if (!analyser) return;
-    analyser.fftSize = 2048;
-    dataArray = new Uint8Array(analyser.frequencyBinCount);
-    try {
-        sourceNode.disconnect();
-    } catch  {}
-    sourceNode.connect(analyser);
-    // Keep graph alive but silent
-    if (!silentGainNode) {
-        silentGainNode = audioCtx.createGain();
-        silentGainNode.gain.value = 0.0;
-        silentGainNode.connect(audioCtx.destination);
-    }
-    try {
-        analyser.disconnect();
-    } catch  {}
-    analyser.connect(silentGainNode);
-};
-const connectMediaEl = async (el)=>{
-    if (!(el instanceof HTMLMediaElement)) return;
-    await ensureAudioContext();
-    let source = mediaSourceMap.get(el);
-    if (!source) {
-        try {
-            source = audioCtx.createMediaElementSource(el);
-        } catch (e) {
-            console.warn('[viz] createMediaElementSource failed', e);
-        }
-        if (source) mediaSourceMap.set(el, source);
-    }
-    if (source) buildAnalyserChain(source);
-    try {
-        el.crossOrigin = 'anonymous';
-    } catch  {}
-    console.log('[viz] MediaElement connected', {
-        src: el.currentSrc || el.src
-    });
-    // Track play/pause events to control visualization
-    el.addEventListener('play', ()=>{
-        playingEls.add(el);
-        updateVisualizerMode('line');
-        console.log('[viz] element play');
-    });
-    const onStop = ()=>{
-        playingEls.delete(el);
-        if (playingEls.size === 0) updateVisualizerMode('idle');
-        console.log('[viz] element stop/pause, playing count:', playingEls.size);
-    };
-    el.addEventListener('pause', onStop);
-    el.addEventListener('ended', onStop);
-};
-const connectMediaStream = async (stream)=>{
-    if (!(stream instanceof MediaStream)) return;
-    await ensureAudioContext();
-    let source = streamSourceMap.get(stream);
-    if (!source) {
-        try {
-            source = audioCtx.createMediaStreamSource(stream);
-        } catch (e) {
-            console.warn('[viz] createMediaStreamSource failed', e);
-        }
-        if (source) streamSourceMap.set(stream, source);
-    }
-    if (source) buildAnalyserChain(source);
-    updateVisualizerMode('line');
-    console.log('[viz] MediaStream connected with tracks:', stream.getTracks().map((t)=>t.kind + ':' + t.readyState));
-    stream.getTracks().forEach((t)=>t.addEventListener('ended', ()=>{
-            if (stream.getTracks().every((tr)=>tr.readyState === 'ended')) {
-                updateVisualizerMode('idle');
-                console.log('[viz] stream ended');
-            }
-        }));
-};
-const observeMediaPlayback = ()=>{
-    const handler = async (type, target)=>{
-        if (!(target instanceof HTMLMediaElement)) return;
-        if (type === 'play') {
-            await connectMediaEl(target);
-            playingEls.add(target);
-            updateVisualizerMode('line');
-            console.log('[viz] global play', target.tagName);
-        } else {
-            playingEls.delete(target);
-            if (playingEls.size === 0) updateVisualizerMode('idle');
-            console.log('[viz] global', type, 'playing count:', playingEls.size);
-        }
-    };
-    document.addEventListener('play', (e)=>handler('play', e.target), true);
-    document.addEventListener('pause', (e)=>handler('pause', e.target), true);
-    document.addEventListener('ended', (e)=>handler('ended', e.target), true);
-};
-const hookConversationAudio = async (conv)=>{
-    try {
-        if (!conv) return;
-        // Try element
-        const el = conv.audioElement || conv.audioEl || conv.audio;
-        if (el instanceof HTMLMediaElement) {
-            await connectMediaEl(el);
-            return;
-        }
-        // Try stream
-        const stream = conv.mediaStream || conv.outputStream || conv.remoteStream || conv.stream;
-        if (stream instanceof MediaStream) {
-            await connectMediaStream(stream);
-            return;
-        }
-        // Fallback: observe DOM for media created later
-        const mo = new MutationObserver((muts)=>{
-            muts.forEach((mut)=>{
-                mut.addedNodes?.forEach((n)=>{
-                    if (n instanceof HTMLMediaElement) connectMediaEl(n);
-                    if (n.querySelectorAll) n.querySelectorAll('audio,video').forEach(connectMediaEl);
-                });
-            });
-        });
-        mo.observe(document.documentElement, {
-            childList: true,
-            subtree: true
         });
     } catch (e) {
-        console.warn('[viz] hookConversationAudio failed', e);
+        console.error("Erro ao iniciar a conversa:", e), b("Erro ao iniciar");
     }
-};
-const setActiveConversation = (conv)=>{
-    activeConversation = conv;
-};
-const initCanvas = (canvasId)=>{
-    canvas = document.getElementById(canvasId);
-    if (!canvas) return;
-    ctx = canvas.getContext('2d');
-    const resize = ()=>{
-        const dpr = window.devicePixelRatio || 1;
-        const w = canvas.clientWidth || window.innerWidth;
-        const h = canvas.clientHeight || window.innerHeight;
-        canvas.width = Math.floor(w * dpr);
-        canvas.height = Math.floor(h * dpr);
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    };
-    resize();
-    window.addEventListener('resize', resize);
-};
-const drawIdle = (tSec)=>{
-    if (!ctx || !canvas) return;
-    const w = canvas.clientWidth;
-    const h = canvas.clientHeight;
-    ctx.clearRect(0, 0, w, h);
-    const cx = w / 2;
-    const cy = h / 2;
-    const base = Math.min(w, h) * 0.12;
-    const r = base * (1 + 0.06 * Math.sin(tSec * 2 * Math.PI * 0.9));
-    ctx.shadowColor = '#00ff80';
-    ctx.shadowBlur = 20;
-    ctx.strokeStyle = '#00ff80';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.stroke();
-};
-const drawLine = ()=>{
-    if (!ctx || !canvas) return;
-    const w = canvas.clientWidth;
-    const h = canvas.clientHeight;
-    ctx.clearRect(0, 0, w, h);
-    ctx.beginPath();
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = '#00ff80';
-    ctx.shadowColor = '#00ff80';
-    ctx.shadowBlur = 16;
-    const midY = Math.floor(h / 2);
-    let rms = 0;
-    if (analyser && dataArray) {
-        analyser.getByteTimeDomainData(dataArray);
-        // Remove DC offset to keep center exactly at midY
-        let mean = 0;
-        for(let i = 0; i < dataArray.length; i++)mean += dataArray[i];
-        mean /= dataArray.length; // around 128, but measured live
-        const step = w / dataArray.length;
-        let sum = 0;
-        for(let i = 0; i < dataArray.length; i++){
-            const centered = (dataArray[i] - mean) / 128; // now ~-1..1 around 0
-            const x = i * step;
-            const y = midY + centered * (h * 0.22);
-            if (i === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
-            sum += centered * centered;
-        }
-        rms = Math.sqrt(sum / dataArray.length);
-    } else if (activeConversation?.getOutputByteFrequencyData) {
-        try {
-            const res = activeConversation.getOutputByteFrequencyData();
-            if (res && typeof res.then === 'function') res.then((bins)=>{
-                lastSdkBins = bins;
-            }).catch(()=>{});
-            else if (res instanceof Uint8Array) lastSdkBins = res;
-        } catch  {}
-        const bins = lastSdkBins;
-        const len = bins?.length || 0;
-        if (len > 0) {
-            // Center bins by subtracting their average so graph oscillates equally
-            let avg = 0;
-            for(let i = 0; i < len; i++)avg += bins[i];
-            avg /= len || 1;
-            const step = w / len;
-            let sum = 0;
-            for(let i = 0; i < len; i++){
-                const centered = (bins[i] - avg) / 255; // roughly -0.5..0.5
-                const x = i * step;
-                const y = midY + centered * 2 * (h * 0.22); // scale to ~-1..1
-                if (i === 0) ctx.moveTo(x, y);
-                else ctx.lineTo(x, y);
-                sum += centered * centered;
-            }
-            rms = Math.sqrt(sum / len) / 1.1; // rough normalization
-        }
-    }
-    // Debug: log when audio starts/stops
-    const isActive = rms > ACTIVE_THRESHOLD;
-    if (isActive && !lastActive) console.log('[viz] audio signal detected, rms=', rms.toFixed(3));
-    if (!isActive) {
-        silentFrames++;
-        if (lastActive && silentFrames > SILENT_FRAME_LIMIT) console.log('[viz] audio gone silent');
-    } else silentFrames = 0;
-    lastActive = isActive;
-    ctx.stroke();
-};
-const initFullVisualizer = (canvasId = 'vizCanvas')=>{
-    initCanvas(canvasId);
-    cancelAnimationFrame(rafId);
-    const tick = (tMs)=>{
-        const tSec = tMs / 1000;
-        if (vizMode === 'line') drawLine();
-        else drawIdle(tSec);
-        rafId = requestAnimationFrame(tick);
-    };
-    rafId = requestAnimationFrame(tick);
-};
+}
+async function S() {
+    y && (y.pause(), y = null), g && (await g.endSession(), g = null), b("Desconectado"), f.classList.remove("hidden"), m.classList.add("hidden");
+}
+f.addEventListener("click", k), m.addEventListener("click", S);
 
-},{"@parcel/transformer-js/src/esmodule-helpers.js":"jnFvT"}]},["5snBN","jOXmm"], "jOXmm", "parcelRequirea2e8", {})
+},{}]},["aEb5F","llgqt"], "llgqt", "parcelRequire94c2", {})
 
-//# sourceMappingURL=arapy-11labs.e02fbd41.js.map
+//# sourceMappingURL=arapy-11labs.1df91bd0.js.map
