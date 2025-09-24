@@ -16,17 +16,21 @@ const urlParams = new URLSearchParams(window.location.search);
 let config = {
     name: urlParams.get('name'),
     agentId: urlParams.get('id'),
-  mode: urlParams.get('mode') || 'default',
+    mode: urlParams.get('mode') || 'default',
 }
 
 //try to load  a {name}.json from the server overwriting the whole config object
 const loadConfig = async () => {
   if (!config.agentId) {
       try {
-          const response = await fetch(`agents/${config.name}.json`);
+          const response = await fetch(`/agents/${config.name}.json`);
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
           const data = await response.json();
           config = data;
           console.log('Config loaded:', config);
+
       } catch (error) {
           console.error('Error loading config:', error);
       }
@@ -39,9 +43,27 @@ const loadConfig = async () => {
       startBtn.disabled = true;
       startBtn.innerText = "Agente não encontrado!";
   }
+
+  // Setup full mode background if needed
+  config.mode = urlParams.get('mode') || config.mode || 'default';
+  setupFullModeBackground();
+
 };
 
 loadConfig();
+
+// Função para configurar o background image no modo full
+const setupFullModeBackground = () => {
+  if (config.mode === 'full' && config.backgroundImage) {
+    const fullModeEl = document.getElementById('fullMode');
+    if (fullModeEl) {
+      // Aplica a imagem de fundo com opacity 0.5 e blend com preto
+      fullModeEl.style.setProperty('--bg-image', `url('${config.backgroundImage}')`);
+      fullModeEl.classList.add('has-bg');
+      console.log('Background image configured:', config.backgroundImage);
+    }
+  }
+};
 
 
  // Função para atualizar o status na interface
