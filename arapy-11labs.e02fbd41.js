@@ -686,7 +686,7 @@ let config = {
 //try to load  a {name}.json from the server overwriting the whole config object
 const loadConfig = async ()=>{
     if (!config.agentId) try {
-        const response = await fetch(`/agents/${config.name}.json`);
+        const response = await fetch(`./agents/${config.name}.json`);
         if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         const data = await response.json();
         config = data;
