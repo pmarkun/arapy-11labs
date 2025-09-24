@@ -1,6 +1,6 @@
 // Importa o Conversation do pacote @11labs/client
  import { Conversation } from '@11labs/client';
- import { initFullVisualizer, observeMediaPlayback, hookConversationAudio, connectMediaEl, setActiveConversation, setVizMode, forceMode } from './visualizer.js';
+ import { initFullVisualizer, observeMediaPlayback, hookConversationAudio, connectMediaEl, setActiveConversation, updateVisualizerMode} from './visualizer.js';
 
  const startBtn = document.getElementById('startBtn');
  const stopBtn = document.getElementById('stopBtn');
@@ -66,13 +66,13 @@ loadConfig();
        try { audio.crossOrigin = 'anonymous'; } catch {}
        if (config.mode === 'full') {
          await connectMediaEl(audio);
-         setVizMode('line');
+         updateVisualizerMode('line');
        }
         audio.play();
         updateStatus('Reproduzindo áudio de boas-vindas');
         await new Promise((resolve) => {
           audio.onended = () => {
-            if (config.mode === 'full') setVizMode('idle');
+            if (config.mode === 'full') updateVisualizerMode('idle');
             resolve();
           };
         });  
@@ -104,11 +104,17 @@ loadConfig();
        },
        onModeChange: (mode) => {
           console.log('Modo alterado:', mode);
-          // Toggle visualizer based on agent speaking/listening
+          // Control visualization directly based on SDK mode
           try {
             if (config.mode === 'full') {
-              const m = mode === 'speaking' ? 'line' : 'idle';
-              forceMode(m);
+              if (mode.mode == 'speaking') {
+                updateVisualizerMode('line');
+                console.log('[viz] speaking!!!');
+              } else {
+                // Any other mode (listening, idle, etc.) goes to circle
+                updateVisualizerMode('idle');
+                console.log('[viz] idle!');
+              }
             }
           } catch {}
        },
@@ -132,7 +138,8 @@ loadConfig();
       audio.pause();
       audio = null;
    }
-  setVizMode('idle');
+   // Return to idle
+   updateVisualizerMode('idle');
    if (conversationInstance) {
      await conversationInstance.endSession();
      conversationInstance = null;
@@ -164,5 +171,5 @@ loadConfig();
      }
    });
   // Idle by default
-  setVizMode('idle');
+  updateVisualizerMode('idle');
  }

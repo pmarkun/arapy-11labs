@@ -6,8 +6,7 @@ let dataArray = null;
 let rafId = null;
 let canvas = null;
 let ctx = null;
-let mode = 'idle'; // 'idle' | 'line'
-let forcedMode = null; // when set, overrides automatic detection
+let vizMode = 'idle'; // 'idle' | 'line'
 let silentGainNode = null;
 const mediaSourceMap = new WeakMap(); // HTMLMediaElement -> MediaElementAudioSourceNode
 const streamSourceMap = new WeakMap(); // MediaStream -> MediaStreamAudioSourceNode
@@ -28,6 +27,13 @@ const ensureAudioContext = async () => {
   }
 };
 
+export const updateVisualizerMode = (mode) => {
+    if (mode !== vizMode) {
+        console.log('[viz] mode ->', mode);
+        vizMode = mode;
+    }
+};
+
 const buildAnalyserChain = (sourceNode) => {
   analyser = (audioCtx && audioCtx.createAnalyser) ? audioCtx.createAnalyser() : null;
   if (!analyser) return;
@@ -45,11 +51,6 @@ const buildAnalyserChain = (sourceNode) => {
   analyser.connect(silentGainNode);
 };
 
-const internalSetMode = (m) => {
-  if (forcedMode) return; // respect forced override
-  setVizMode(m);
-};
-
 export const connectMediaEl = async (el) => {
   if (!(el instanceof HTMLMediaElement)) return;
   await ensureAudioContext();
@@ -60,17 +61,17 @@ export const connectMediaEl = async (el) => {
   }
   if (source) buildAnalyserChain(source);
   try { el.crossOrigin = 'anonymous'; } catch {}
-  internalSetMode('line');
   console.log('[viz] MediaElement connected', { src: el.currentSrc || el.src });
-  // Track play/pause on element
+  
+  // Track play/pause events to control visualization
   el.addEventListener('play', () => {
     playingEls.add(el);
-    internalSetMode('line');
+    updateVisualizerMode('line');
     console.log('[viz] element play');
   });
   const onStop = () => {
     playingEls.delete(el);
-  if (playingEls.size === 0) internalSetMode('idle');
+    if (playingEls.size === 0) updateVisualizerMode('idle');
     console.log('[viz] element stop/pause, playing count:', playingEls.size);
   };
   el.addEventListener('pause', onStop);
@@ -86,11 +87,11 @@ export const connectMediaStream = async (stream) => {
     if (source) streamSourceMap.set(stream, source);
   }
   if (source) buildAnalyserChain(source);
-  internalSetMode('line');
+  updateVisualizerMode('line');
   console.log('[viz] MediaStream connected with tracks:', stream.getTracks().map(t => t.kind + ':' + t.readyState));
   stream.getTracks().forEach(t => t.addEventListener('ended', () => {
     if (stream.getTracks().every(tr => tr.readyState === 'ended')) {
-  internalSetMode('idle');
+      updateVisualizerMode('idle');
       console.log('[viz] stream ended');
     }
   }));
@@ -100,13 +101,13 @@ export const observeMediaPlayback = () => {
   const handler = async (type, target) => {
     if (!(target instanceof HTMLMediaElement)) return;
     if (type === 'play') {
-  await connectMediaEl(target);
-  playingEls.add(target);
-  internalSetMode('line');
+      await connectMediaEl(target);
+      playingEls.add(target);
+      updateVisualizerMode('line');
       console.log('[viz] global play', target.tagName);
     } else {
       playingEls.delete(target);
-  if (playingEls.size === 0) internalSetMode('idle');
+      if (playingEls.size === 0) updateVisualizerMode('idle');
       console.log('[viz] global', type, 'playing count:', playingEls.size);
     }
   };
@@ -147,23 +148,6 @@ export const hookConversationAudio = async (conv) => {
 
 export const setActiveConversation = (conv) => {
   activeConversation = conv;
-};
-
-export const setVizMode = (m) => {
-  if (mode !== m) {
-    console.log('[viz] mode ->', m);
-    mode = m;
-  }
-};
-
-export const forceMode = (m) => {
-  forcedMode = m;
-  if (m) {
-    console.log('[viz] forced mode ->', m);
-    if (mode !== m) setVizMode(m);
-  } else {
-    console.log('[viz] forced mode cleared');
-  }
 };
 
 const initCanvas = (canvasId) => {
@@ -268,8 +252,6 @@ const drawLine = () => {
     silentFrames++;
     if (lastActive && silentFrames > SILENT_FRAME_LIMIT) {
       console.log('[viz] audio gone silent');
-      // Always return to idle after sustained silence
-      setVizMode('idle');
     }
   } else {
     silentFrames = 0;
@@ -284,39 +266,7 @@ export const initFullVisualizer = (canvasId = 'vizCanvas') => {
   cancelAnimationFrame(rafId);
   const tick = (tMs) => {
     const tSec = tMs / 1000;
-    // Opportunistic SDK-based detection to flip modes if needed
-    let sdkRms = 0;
-    try {
-      if (activeConversation?.getOutputByteFrequencyData) {
-        const res = activeConversation.getOutputByteFrequencyData();
-        if (res && typeof res.then === 'function') {
-          res.then((bins) => { lastSdkBins = bins; }).catch(() => {});
-        } else if (res instanceof Uint8Array) {
-          lastSdkBins = res;
-        }
-        const bins = lastSdkBins;
-        const len = bins?.length || 0;
-        if (len > 0) {
-          let sum = 0;
-          for (let i = 0; i < len; i++) {
-            const v = (bins[i] / 255) - 0.5;
-            sum += v * v;
-          }
-          sdkRms = Math.sqrt(sum / len);
-        }
-      }
-    } catch {}
-
-    // If we detect signal but mode is idle, switch to line
-    if (sdkRms > ACTIVE_THRESHOLD && mode !== 'line') {
-      internalSetMode('line');
-    }
-    // If idle or line drawing
-  if (mode === 'line') drawLine(); else drawIdle(tSec);
-    // If no signal and no playing media elements, go idle
-    if (sdkRms <= ACTIVE_THRESHOLD && playingEls.size === 0 && mode !== 'idle') {
-      internalSetMode('idle');
-    }
+    if (vizMode === 'line') drawLine(); else drawIdle(tSec);
     rafId = requestAnimationFrame(tick);
   };
   rafId = requestAnimationFrame(tick);
