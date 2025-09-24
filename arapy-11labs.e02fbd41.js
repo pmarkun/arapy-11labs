@@ -160,11 +160,11 @@
       });
     }
   }
-})({"5snBN":[function(require,module,exports,__globalThis) {
+})({"kxwl6":[function(require,module,exports,__globalThis) {
 var global = arguments[3];
 var HMR_HOST = null;
 var HMR_PORT = null;
-var HMR_SERVER_PORT = 45991;
+var HMR_SERVER_PORT = 1234;
 var HMR_SECURE = false;
 var HMR_ENV_HASH = "439701173a9199ea";
 var HMR_USE_SSE = false;
@@ -686,7 +686,8 @@ let config = {
 //try to load  a {name}.json from the server overwriting the whole config object
 const loadConfig = async ()=>{
     if (!config.agentId) try {
-        const response = await fetch(`agents/${config.name}.json`);
+        const response = await fetch(`/agents/${config.name}.json`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         const data = await response.json();
         config = data;
         console.log('Config loaded:', config);
@@ -699,8 +700,23 @@ const loadConfig = async ()=>{
         startBtn.disabled = true;
         startBtn.innerText = "Agente n\xe3o encontrado!";
     }
+    // Setup full mode background if needed
+    config.mode = urlParams.get('mode') || config.mode || 'default';
+    setupFullModeBackground();
 };
 loadConfig();
+// Função para configurar o background image no modo full
+const setupFullModeBackground = ()=>{
+    if (config.mode === 'full' && config.backgroundImage) {
+        const fullModeEl = document.getElementById('fullMode');
+        if (fullModeEl) {
+            // Aplica a imagem de fundo com opacity 0.5 e blend com preto
+            fullModeEl.style.setProperty('--bg-image', `url('${config.backgroundImage}')`);
+            fullModeEl.classList.add('has-bg');
+            console.log('Background image configured:', config.backgroundImage);
+        }
+    }
+};
 // Função para atualizar o status na interface
 const updateStatus = (status)=>{
     statusEl.textContent = "Status: " + status;
@@ -1697,6 +1713,6 @@ const initFullVisualizer = (canvasId = 'vizCanvas')=>{
     rafId = requestAnimationFrame(tick);
 };
 
-},{"@parcel/transformer-js/src/esmodule-helpers.js":"jnFvT"}]},["5snBN","jOXmm"], "jOXmm", "parcelRequirea2e8", {})
+},{"@parcel/transformer-js/src/esmodule-helpers.js":"jnFvT"}]},["kxwl6","jOXmm"], "jOXmm", "parcelRequirea2e8", {})
 
 //# sourceMappingURL=arapy-11labs.e02fbd41.js.map

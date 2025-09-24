@@ -2,5 +2,5 @@
     "name": "Vlado",
     "description": "A simple agent that uses the 11 Labs API to generate audio from text.",
     "agentId": "kSI2dAf0eeEQJ6PkZ2H8",
-    "startAudio": "audio/Vlado.mp3"
+    "backgroundImage": "images/Vlado.jpg"
 }

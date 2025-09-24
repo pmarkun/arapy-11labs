@@ -1,0 +1,6 @@
+{
+    "name": "Hans Staden",
+    "description": "A simple agent that uses the 11 Labs API to generate audio from text.",
+    "agentId": "agent_3101k5hvxh8eefbry47hz96g6skv",
+    "backgroundImage": "images/hans-staden.jpg"
+}
