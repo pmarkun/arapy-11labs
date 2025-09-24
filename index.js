@@ -23,7 +23,7 @@ let config = {
 const loadConfig = async () => {
   if (!config.agentId) {
       try {
-          const response = await fetch(`/agents/${config.name}.json`);
+          const response = await fetch(`./agents/${config.name}.json`);
           if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
           }
