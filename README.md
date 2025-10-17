@@ -145,6 +145,13 @@ O sistema possui um componente de legendas que exibe o texto falado pela IA de f
 }
 ```
 
+**Quebra Inteligente de Blocos:**
+- Quebra em pontuações (`.`, `!`, `?`) para respeitar frases naturais
+- Duração proporcional ao tamanho do bloco:
+  - Blocos pequenos (pontuação): pausa mínima de 500ms
+  - Blocos completos: pausa de até `blockDuration` ms
+  - Transições mais naturais e fluidas
+
 **Controle via URL:**
 ```
 # Forçar legendas ativadas

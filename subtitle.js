@@ -223,11 +223,31 @@ const displayNextBlock = () => {
       animationInterval = null;
       isAnimating = false;
       
-      // Calculate remaining time for this block
+      // Calculate remaining time for this block based on its size
       const wordCount = displayedWords.length;
       const animationDuration = wordCount * msPerWord;
-      const minDuration = config.blockDuration;
-      const remainingTime = Math.max(0, minDuration - animationDuration);
+      
+      // Use proportional duration: longer for full blocks, shorter for punctuation breaks
+      // Calculate how "full" the block is (0.0 to 1.0)
+      const blockText = displayedWords.join(' ');
+      const maxCharsPerBlock = config.maxCharsPerLine * config.maxLines;
+      const fillRatio = Math.min(1.0, blockText.length / maxCharsPerBlock);
+      
+      // Minimum pause: 500ms, maximum: blockDuration
+      const minPause = 500;
+      const maxPause = config.blockDuration;
+      const pauseDuration = minPause + (maxPause - minPause) * fillRatio;
+      
+      // Remaining time after animation
+      const remainingTime = Math.max(0, pauseDuration - animationDuration);
+      
+      console.log('[subtitle] Block stats:', {
+        words: wordCount,
+        chars: blockText.length,
+        fillRatio: fillRatio.toFixed(2),
+        pauseDuration: Math.round(pauseDuration),
+        remainingTime: Math.round(remainingTime)
+      });
       
       // Schedule next block or fade out
       if (blockTimeout) clearTimeout(blockTimeout);
