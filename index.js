@@ -16,7 +16,7 @@ const urlParams = new URLSearchParams(window.location.search);
 let config = {
     name: urlParams.get('name'),
     agentId: urlParams.get('id'),
-    fullscreen: urlParams.get('fullscreen') === 'true' || urlParams.get('fullscreen') === '1',
+    mode: urlParams.get('mode') || 'card', // 'card', 'fullscreen', or 'painel'
     visualizationMode: urlParams.get('visualization') || null,
 }
 
@@ -25,7 +25,7 @@ console.log('Initial config from URL params:', config);
 //try to load  a {name}.json from the server and merge with URL params
 const loadConfig = async () => {
   // Store URL parameters before loading JSON
-  const urlFullscreen = urlParams.get('fullscreen') === 'true' || urlParams.get('fullscreen') === '1';
+  const urlMode = urlParams.get('mode') || 'card';
   const urlVisualization = urlParams.get('visualization');
   
   if (!config.agentId) {
@@ -39,7 +39,7 @@ const loadConfig = async () => {
           // Merge JSON data with URL parameters (URL params have priority)
           config = {
             ...data,
-            fullscreen: urlFullscreen,
+            mode: urlMode,
             visualizationMode: urlVisualization || data.defaultVisualization
           };
           
@@ -59,7 +59,7 @@ const loadConfig = async () => {
   }
   
   // Validate visualization configuration if provided
-  if (config.fullscreen) {
+  if (config.mode === 'fullscreen' || config.mode === 'painel') {
     const vizError = validateVisualizationConfig();
     if (vizError) {
       showError(vizError);
@@ -67,8 +67,12 @@ const loadConfig = async () => {
     }
   }
   
-  // Initialize fullscreen mode after config is loaded
-  initializeFullscreenMode();
+  // Initialize display mode after config is loaded
+  if (config.mode === 'painel') {
+    initializePainelMode();
+  } else if (config.mode === 'fullscreen') {
+    initializeFullscreenMode();
+  }
 };
 
 // Function to validate visualization configuration
@@ -145,7 +149,7 @@ const initializeFullscreenMode = () => {
   const cardEl = document.getElementById('card');
   const fullModeEl = document.getElementById('fullMode');
   
-  if (config.fullscreen) {
+  if (config.mode === 'fullscreen') {
     console.log('[fullscreen] Initializing fullscreen mode');
     // Hide card, show overlay
     if (cardEl) cardEl.classList.add('hidden');
@@ -181,6 +185,47 @@ const initializeFullscreenMode = () => {
   }
 };
 
+// Função para inicializar modo painel (384x768 LED panel)
+const initializePainelMode = () => {
+  const cardEl = document.getElementById('card');
+  const painelModeEl = document.getElementById('painelMode');
+  
+  if (config.mode === 'painel') {
+    console.log('[painel] Initializing painel mode (384x768)');
+    // Hide card, show painel
+    if (cardEl) cardEl.classList.add('hidden');
+    if (painelModeEl) painelModeEl.classList.remove('hidden');
+    
+    // Get visualization mode from URL or default
+    const vizMode = config.visualizationMode || config.defaultVisualization;
+    
+    // Get the specific visualization config
+    const vizConfig = config.visualizations[vizMode];
+    console.log('[painel] Using visualization mode:', vizMode);
+    console.log('[painel] Visualizer config:', vizConfig);
+    
+    // Add backgroundImage to visualizer config if mode is 'line' and backgroundImage exists
+    if (vizConfig.mode === 'line' && config.backgroundImage) {
+      vizConfig.backgroundImage = config.backgroundImage;
+    }
+    
+    initFullVisualizer('painelCanvas', vizConfig, painelModeEl);
+    observeMediaPlayback();
+    
+    // Click anywhere to start/stop
+    painelModeEl.addEventListener('click', async () => {
+      if (!conversationInstance) {
+        await startConversation();
+      } else {
+        await endConversation();
+      }
+    });
+    
+    // Idle by default
+    updateVisualizerMode('idle');
+  }
+};
+
 loadConfig();
 
  // Função para atualizar o status na interface
@@ -203,7 +248,7 @@ loadConfig();
 
        audio = new Audio(config.startAudio);
        try { audio.crossOrigin = 'anonymous'; } catch {}
-       if (config.fullscreen) {
+       if (config.mode === 'fullscreen' || config.mode === 'painel') {
          await connectMediaEl(audio);
          updateVisualizerMode('active');
        }
@@ -211,7 +256,7 @@ loadConfig();
         updateStatus('Reproduzindo áudio de boas-vindas');
         await new Promise((resolve) => {
           audio.onended = () => {
-            if (config.fullscreen) updateVisualizerMode('idle');
+            if (config.mode === 'fullscreen' || config.mode === 'painel') updateVisualizerMode('idle');
             resolve();
           };
         });  
@@ -245,7 +290,7 @@ loadConfig();
           console.log('Modo alterado:', mode);
           // Control visualization directly based on SDK mode
           try {
-            if (config.fullscreen) {
+            if (config.mode === 'fullscreen' || config.mode === 'painel') {
               if (mode.mode == 'speaking') {
                 updateVisualizerMode('active');
                 console.log('[viz] speaking!!!');
@@ -260,7 +305,7 @@ loadConfig();
      });
 
       // Try to hook SDK audio for visualization
-      if (config.fullscreen) {
+      if (config.mode === 'fullscreen' || config.mode === 'painel') {
         await hookConversationAudio(conversationInstance);
         setActiveConversation(conversationInstance);
       }

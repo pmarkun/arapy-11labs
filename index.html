@@ -26,12 +26,53 @@
     #fullMode.has-bg::before {
       display: block;
     }
+
+    /* Painel mode - fixed 384x768 viewport for LED panel */
+    #painelMode {
+      width: 384px;
+      height: 768px;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      overflow: hidden;
+    }
+
+    #painelMode::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-image: var(--bg-image);
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      opacity: 0.5;
+      z-index: -1;
+      display: none;
+    }
+    
+    #painelMode.has-bg::before {
+      display: block;
+    }
+
+    #painelCanvas {
+      width: 384px;
+      height: 768px;
+    }
   </style>
 </head>
 <body class="bg-gray-100 flex items-center justify-center min-h-screen">
   <!-- Full mode overlay (hidden by default) -->
   <div id="fullMode" class="hidden fixed inset-0 bg-black select-none cursor-pointer">
     <canvas id="vizCanvas" class="block w-full h-full"></canvas>
+  </div>
+
+  <!-- Painel mode - 384x768 LED panel (hidden by default) -->
+  <div id="painelMode" class="hidden bg-black select-none cursor-pointer">
+    <canvas id="painelCanvas" class="block"></canvas>
   </div>
 
   <!-- Default card UI -->
