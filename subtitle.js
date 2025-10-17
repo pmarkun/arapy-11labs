@@ -3,14 +3,21 @@
 
 let subtitleContainer = null;
 let currentSubtitle = null;
-let wordQueue = [];
+let blockQueue = []; // Queue of text blocks
+let currentBlockWords = []; // Words in current block
+let displayedWords = []; // Words already displayed
 let isAnimating = false;
 let animationInterval = null;
-let config = {
-  enabled: false,
+let blockTimeout = null;
+
+// Default configuration
+const defaultConfig = {
+  enabled: true,
   wordsPerSecond: 3, // Average speaking speed
   fadeOutDelay: 2000, // Delay before fading out completed text
   maxLines: 2, // Maximum lines to display
+  maxCharsPerLine: 40, // Approximate characters per line for breaking
+  blockDuration: 3000, // Duration to show each block before moving to next
   position: 'bottom', // 'bottom', 'top', 'center'
   fontSize: '2rem',
   fontFamily: 'system-ui, -apple-system, sans-serif',
@@ -21,9 +28,12 @@ let config = {
   maxWidth: '80%',
 };
 
+let config = { ...defaultConfig };
+
 // Initialize subtitle system
 export const initSubtitles = (containerElement, customConfig = {}) => {
-  config = { ...config, ...customConfig };
+  // Merge with defaults (customConfig overrides defaults)
+  config = { ...defaultConfig, ...customConfig };
   
   if (!containerElement) {
     console.error('[subtitle] Container element not found');
@@ -40,7 +50,6 @@ export const initSubtitles = (containerElement, customConfig = {}) => {
     containerElement.appendChild(subtitleContainer);
   }
   
-  config.enabled = true;
   console.log('[subtitle] Initialized with config:', config);
 };
 
@@ -103,23 +112,61 @@ export const handleConversationMessage = (message) => {
   
   console.log('[subtitle] Message received:', message);
   
+  // Filter out user messages - only show AI responses
+  // Check if message is from user
+  if (message.source === 'user' || message.role === 'user' || message.from === 'user') {
+    console.log('[subtitle] Ignoring user message');
+    return;
+  }
+  
   // Handle different message types from 11Labs
   if (message.type === 'conversation_initiation_metadata') {
     // Conversation started
     console.log('[subtitle] Conversation started');
   } else if (message.type === 'audio' || message.type === 'message') {
-    // Audio message with transcript
-    if (message.transcript || message.text) {
+    // Audio message with transcript - only if from agent/assistant
+    if ((message.source === 'ai' || message.source === 'agent' || message.role === 'assistant' || !message.source) && (message.transcript || message.text)) {
       const text = message.transcript || message.text;
       displaySubtitle(text);
     }
-  } else if (message.message) {
-    // Generic message format
+  } else if (message.message && (message.source === 'ai' || message.source === 'agent' || !message.source)) {
+    // Generic message format from AI
     displaySubtitle(message.message);
   }
 };
 
-// Display subtitle with word-by-word animation
+// Break text into blocks that fit within maxLines
+const breakIntoBlocks = (text) => {
+  const words = text.trim().split(/\s+/);
+  const blocks = [];
+  const maxCharsPerBlock = config.maxCharsPerLine * config.maxLines;
+  
+  let currentBlock = [];
+  let currentLength = 0;
+  
+  for (const word of words) {
+    const wordLength = word.length + 1; // +1 for space
+    
+    // If adding this word exceeds the limit, start a new block
+    if (currentLength + wordLength > maxCharsPerBlock && currentBlock.length > 0) {
+      blocks.push(currentBlock.join(' '));
+      currentBlock = [word];
+      currentLength = wordLength;
+    } else {
+      currentBlock.push(word);
+      currentLength += wordLength;
+    }
+  }
+  
+  // Add the last block if not empty
+  if (currentBlock.length > 0) {
+    blocks.push(currentBlock.join(' '));
+  }
+  
+  return blocks;
+};
+
+// Display subtitle in blocks
 const displaySubtitle = (text) => {
   if (!text || !subtitleContainer) return;
   
@@ -128,50 +175,68 @@ const displaySubtitle = (text) => {
   // Clear previous animation
   stopAnimation();
   
-  // Split text into words
-  const words = text.trim().split(/\s+/);
-  wordQueue = [...words];
+  // Break text into blocks
+  blockQueue = breakIntoBlocks(text);
+  console.log('[subtitle] Blocks:', blockQueue);
   
-  // Clear container
+  // Start displaying blocks
+  displayNextBlock();
+};
+
+// Display next block in queue with word-by-word animation
+const displayNextBlock = () => {
+  if (blockQueue.length === 0) {
+    // All blocks displayed
+    fadeOutAfterDelay();
+    return;
+  }
+  
+  // Get next block
+  const blockText = blockQueue.shift();
+  currentBlockWords = blockText.split(/\s+/);
+  displayedWords = [];
+  
+  console.log('[subtitle] Showing block:', blockText);
+  
+  // Clear container and prepare for animation
   subtitleContainer.textContent = '';
   subtitleContainer.style.opacity = '1';
   
   // Start word-by-word animation
-  startAnimation();
-};
-
-// Start word-by-word animation
-const startAnimation = () => {
-  if (isAnimating) return;
-  
   isAnimating = true;
   const msPerWord = 1000 / config.wordsPerSecond;
   
-  let displayedWords = [];
-  
   animationInterval = setInterval(() => {
-    if (wordQueue.length === 0) {
-      // Animation complete
-      stopAnimation();
-      fadeOutAfterDelay();
+    if (currentBlockWords.length === 0) {
+      // Block complete, stop animation
+      clearInterval(animationInterval);
+      animationInterval = null;
+      isAnimating = false;
+      
+      // Calculate remaining time for this block
+      const wordCount = displayedWords.length;
+      const animationDuration = wordCount * msPerWord;
+      const minDuration = config.blockDuration;
+      const remainingTime = Math.max(0, minDuration - animationDuration);
+      
+      // Schedule next block or fade out
+      if (blockTimeout) clearTimeout(blockTimeout);
+      blockTimeout = setTimeout(() => {
+        if (blockQueue.length > 0) {
+          displayNextBlock();
+        } else {
+          fadeOutAfterDelay();
+        }
+      }, remainingTime);
       return;
     }
     
     // Add next word
-    const nextWord = wordQueue.shift();
+    const nextWord = currentBlockWords.shift();
     displayedWords.push(nextWord);
     
     // Update display
-    const text = displayedWords.join(' ');
-    subtitleContainer.textContent = text;
-    
-    // Handle max lines (approximate)
-    const lines = Math.ceil(displayedWords.length / 10); // Rough estimate
-    if (lines > config.maxLines && wordQueue.length > 0) {
-      // Shift old words out
-      const wordsPerLine = Math.ceil(displayedWords.length / lines);
-      displayedWords = displayedWords.slice(wordsPerLine);
-    }
+    subtitleContainer.textContent = displayedWords.join(' ');
   }, msPerWord);
 };
 
@@ -181,8 +246,14 @@ const stopAnimation = () => {
     clearInterval(animationInterval);
     animationInterval = null;
   }
+  if (blockTimeout) {
+    clearTimeout(blockTimeout);
+    blockTimeout = null;
+  }
   isAnimating = false;
-  wordQueue = [];
+  blockQueue = [];
+  currentBlockWords = [];
+  displayedWords = [];
 };
 
 // Fade out subtitle after delay

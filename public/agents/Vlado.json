@@ -8,6 +8,8 @@
         "wordsPerSecond": 3,
         "fadeOutDelay": 2000,
         "maxLines": 2,
+        "maxCharsPerLine": 40,
+        "blockDuration": 3000,
         "position": "bottom",
         "fontSize": "2rem",
         "color": "#ffffff",

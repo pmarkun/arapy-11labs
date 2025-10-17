@@ -1,0 +1,14 @@
+{
+    "name": "Exemplo Simples",
+    "description": "Agente sem configuração de legendas - usa padrões",
+    "agentId": "agent_exemplo",
+    "defaultVisualization": "line",
+    "visualizations": {
+        "line": {
+            "mode": "line",
+            "color": "#00ff80",
+            "lineWidth": 2,
+            "shadowBlur": 10
+        }
+    }
+}

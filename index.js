@@ -19,6 +19,7 @@ let config = {
     agentId: urlParams.get('id'),
     mode: urlParams.get('mode') || 'card', // 'card', 'fullscreen', or 'painel'
     visualizationMode: urlParams.get('visualization') || null,
+    subtitlesEnabled: urlParams.get('subtitles') !== null ? (urlParams.get('subtitles') === 'true' || urlParams.get('subtitles') === '1') : null,
 }
 
 console.log('Initial config from URL params:', config);
@@ -28,6 +29,7 @@ const loadConfig = async () => {
   // Store URL parameters before loading JSON
   const urlMode = urlParams.get('mode') || 'card';
   const urlVisualization = urlParams.get('visualization');
+  const urlSubtitles = config.subtitlesEnabled;
   
   if (!config.agentId) {
       try {
@@ -43,6 +45,11 @@ const loadConfig = async () => {
             mode: urlMode,
             visualizationMode: urlVisualization || data.defaultVisualization
           };
+          
+          // Override subtitles.enabled if URL parameter is provided
+          if (urlSubtitles !== null && config.subtitles) {
+            config.subtitles.enabled = urlSubtitles;
+          }
           
           console.log('Config loaded and merged:', config);
 
@@ -172,10 +179,16 @@ const initializeFullscreenMode = () => {
     initFullVisualizer('vizCanvas', vizConfig, fullModeEl);
     observeMediaPlayback();
     
-    // Initialize subtitles if enabled
-    if (config.subtitles && config.subtitles.enabled) {
-      initSubtitles(fullModeEl, config.subtitles);
+    // Initialize subtitles (uses defaults if no config provided)
+    const subtitlesConfig = config.subtitles || {};
+    // Check if enabled (default is true, can be overridden by JSON or URL)
+    const subtitlesEnabled = subtitlesConfig.enabled !== false;
+    
+    if (subtitlesEnabled) {
+      initSubtitles(fullModeEl, subtitlesConfig);
       console.log('[fullscreen] Subtitles initialized');
+    } else {
+      console.log('[fullscreen] Subtitles disabled');
     }
     
     // Click anywhere to start/stop
@@ -219,9 +232,16 @@ const initializePainelMode = () => {
     initFullVisualizer('painelCanvas', vizConfig, painelModeEl);
     observeMediaPlayback();
     
-    // Initialize subtitles if enabled
-    if (config.subtitles && config.subtitles.enabled) {
-      initSubtitles(painelModeEl, config.subtitles);
+    // Initialize subtitles (uses defaults if no config provided)
+    const subtitlesConfig = config.subtitles || {};
+    // Check if enabled (default is true, can be overridden by JSON or URL)
+    const subtitlesEnabled = subtitlesConfig.enabled !== false;
+    
+    if (subtitlesEnabled) {
+      initSubtitles(painelModeEl, subtitlesConfig);
+      console.log('[painel] Subtitles initialized');
+    } else {
+      console.log('[painel] Subtitles disabled');
     }
     
     // Click anywhere to start/stop
@@ -290,8 +310,9 @@ loadConfig();
        onMessage: (message) => {
          console.log('Mensagem recebida:', message);
          
-         // Handle subtitles if enabled
-         if (config.subtitles && config.subtitles.enabled) {
+         // Handle subtitles if enabled (check if not explicitly disabled)
+         const subtitlesEnabled = config.subtitles ? config.subtitles.enabled !== false : true;
+         if (subtitlesEnabled) {
            handleConversationMessage(message);
          }
        },

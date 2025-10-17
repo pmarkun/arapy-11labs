@@ -9,6 +9,8 @@
         "wordsPerSecond": 2.5,
         "fadeOutDelay": 2500,
         "maxLines": 2,
+        "maxCharsPerLine": 35,
+        "blockDuration": 3500,
         "position": "bottom",
         "fontSize": "2.5rem",
         "color": "#ff6b35",

@@ -30,6 +30,7 @@ Visualização otimizada para painel de LED com dimensões fixas de **384x768 pi
 | `id` | string | ID direto do agente (opcional, sobrescreve o JSON) |
 | `mode` | `card`, `fullscreen`, `painel` | Modo de exibição (padrão: `card`) |
 | `visualization` | string | Nome da visualização (ex: `image`, `line`, `line-green`) |
+| `subtitles` | `true`, `false`, `1`, `0` | Ativa/desativa legendas (sobrescreve JSON) |
 
 ## Estrutura do JSON
 
@@ -77,15 +78,19 @@ Visualização otimizada para painel de LED com dimensões fixas de **384x768 pi
 - `visualizations`: Objeto contendo as configurações de visualização
 - `defaultVisualization`: Nome da visualização padrão (usada quando o parâmetro URL não é fornecido)
 
-### Para legendas (opcional):
-- `subtitles.enabled`: Ativa/desativa as legendas (true/false)
+### Para legendas (opcional - todos os campos têm valores padrão):
+- `subtitles.enabled`: Ativa/desativa as legendas (padrão: true)
 - `subtitles.wordsPerSecond`: Velocidade de exibição das palavras (padrão: 3)
-- `subtitles.fadeOutDelay`: Tempo em ms antes de desaparecer (padrão: 2000)
-- `subtitles.maxLines`: Número máximo de linhas (padrão: 2)
-- `subtitles.position`: Posição das legendas: 'bottom', 'top', 'center'
+- `subtitles.fadeOutDelay`: Tempo em ms antes de desaparecer após último bloco (padrão: 2000)
+- `subtitles.maxLines`: Número máximo de linhas por bloco (padrão: 2)
+- `subtitles.maxCharsPerLine`: Caracteres aproximados por linha para quebra (padrão: 40)
+- `subtitles.blockDuration`: Duração mínima de cada bloco em ms (padrão: 3000)
+- `subtitles.position`: Posição das legendas: 'bottom', 'top', 'center' (padrão: 'bottom')
 - `subtitles.fontSize`: Tamanho da fonte CSS (padrão: '2rem')
 - `subtitles.color`: Cor do texto (padrão: '#ffffff')
 - `subtitles.backgroundColor`: Cor de fundo com transparência (padrão: 'rgba(0, 0, 0, 0.7)')
+
+**Nota:** Se a seção `subtitles` não existir no JSON, as legendas serão habilitadas com valores padrão.
 
 ### Para visualização do tipo "line":
 - `mode`: deve ser "line"
@@ -103,26 +108,53 @@ Visualização otimizada para painel de LED com dimensões fixas de **384x768 pi
 O sistema possui um componente de legendas que exibe o texto falado pela IA de forma sincronizada:
 
 **Características:**
-- ✅ Animação palavra por palavra
+- ✅ Exibição em blocos para melhor legibilidade
+- ✅ Animação palavra-por-palavra dentro de cada bloco
+- ✅ Quebra automática de texto em múltiplas linhas
+- ✅ Filtra mensagens do usuário (exibe apenas fala da IA)
 - ✅ Sincronização com a velocidade da fala
-- ✅ Fade in/out suave
+- ✅ Fade in/out suave entre blocos
 - ✅ Posicionamento configurável (bottom, top, center)
 - ✅ Estilo totalmente customizável via JSON
-- ✅ Suporte a múltiplas linhas
+- ✅ Configuração opcional - usa defaults se não especificado
+- ✅ Toggle via URL (`?subtitles=true` ou `?subtitles=false`)
 - ✅ Integração automática com 11Labs API
 
-**Configuração:**
+**Configuração (todos os campos são opcionais):**
 ```json
 "subtitles": {
     "enabled": true,
     "wordsPerSecond": 3,
     "fadeOutDelay": 2000,
     "maxLines": 2,
+    "maxCharsPerLine": 40,
+    "blockDuration": 3000,
     "position": "bottom",
     "fontSize": "2rem",
     "color": "#ffffff",
     "backgroundColor": "rgba(0, 0, 0, 0.7)"
 }
+```
+
+**Ou simplesmente omita a configuração para usar os padrões:**
+```json
+{
+    "name": "Agente",
+    "agentId": "agent_xxx"
+    // Sem seção "subtitles" - usará configuração padrão
+}
+```
+
+**Controle via URL:**
+```
+# Forçar legendas ativadas
+?name=Hans&mode=fullscreen&subtitles=true
+
+# Forçar legendas desativadas
+?name=Vlado&mode=painel&subtitles=false
+
+# Usar configuração do JSON (padrão)
+?name=Hans&mode=fullscreen
 ```
 
 ## Exemplos de Uso
