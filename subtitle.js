@@ -147,6 +147,9 @@ const breakIntoBlocks = (text) => {
   for (const word of words) {
     const wordLength = word.length + 1; // +1 for space
     
+    // Check if word ends with sentence-ending punctuation
+    const endsWithPunctuation = /[.!?]$/.test(word);
+    
     // If adding this word exceeds the limit, start a new block
     if (currentLength + wordLength > maxCharsPerBlock && currentBlock.length > 0) {
       blocks.push(currentBlock.join(' '));
@@ -155,6 +158,13 @@ const breakIntoBlocks = (text) => {
     } else {
       currentBlock.push(word);
       currentLength += wordLength;
+      
+      // If word ends with punctuation, complete the block (unless it would be too small)
+      if (endsWithPunctuation && currentLength >= config.maxCharsPerLine * 0.5) {
+        blocks.push(currentBlock.join(' '));
+        currentBlock = [];
+        currentLength = 0;
+      }
     }
   }
   
