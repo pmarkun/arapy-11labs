@@ -8,6 +8,7 @@
  const statusEl = document.getElementById('status');
  let conversationInstance = null;
  let audio = null;
+ let isStarting = false; // Flag to prevent double-click
 // Visualizer state is managed in visualizer.js
 
 // on page load: check for name and id parameters in url, then set the <span id=name> object
@@ -267,6 +268,14 @@ loadConfig();
 
  // Função para iniciar a conversa
  async function startConversation() {
+   // Prevent double-click/double-start
+   if (isStarting || conversationInstance) {
+     console.log('[startConversation] Already starting or active, ignoring...');
+     return;
+   }
+   
+   isStarting = true;
+   
    try {
      // Primeiro, solicite acesso ao microfone e explique o porquê ao usuário
      await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -346,10 +355,14 @@ loadConfig();
         await hookConversationAudio(conversationInstance);
         setActiveConversation(conversationInstance);
       }
+      
+      // Successfully started - reset flag
+      isStarting = false;
 
    } catch (error) {
      console.error('Erro ao iniciar a conversa:', error);
      updateStatus('Erro ao iniciar');
+     isStarting = false; // Reset flag on error
    }
  }
 
@@ -368,6 +381,8 @@ loadConfig();
      await conversationInstance.endSession();
      conversationInstance = null;
    }
+   // Reset starting flag
+   isStarting = false;
    updateStatus('Desconectado');
    startBtn.classList.remove('hidden');
    stopBtn.classList.add('hidden');
