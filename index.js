@@ -1,6 +1,6 @@
 // Importa o Conversation do pacote @11labs/client
  import { Conversation } from '@11labs/client';
- import { initFullVisualizer, observeMediaPlayback, hookConversationAudio, connectMediaEl, setActiveConversation, updateVisualizerMode} from './visualizer.js';
+ import { initFullVisualizer, observeMediaPlayback, hookConversationAudio, connectMediaEl, setActiveConversation, updateVisualizerMode, configureVisualizer} from './visualizer.js';
 
  const startBtn = document.getElementById('startBtn');
  const stopBtn = document.getElementById('stopBtn');
@@ -182,8 +182,12 @@ const setupFullModeBackground = () => {
    // Hide card, show overlay
    if (cardEl) cardEl.classList.add('hidden');
    if (fullModeEl) fullModeEl.classList.remove('hidden');
-  initFullVisualizer('vizCanvas');
-  observeMediaPlayback();
+   
+   // Initialize visualizer with config
+   const vizConfig = config.visualizer || { mode: 'line', color: '#00ff80' };
+   initFullVisualizer('vizCanvas', vizConfig);
+   observeMediaPlayback();
+   
    // Click anywhere to start/stop
    fullModeEl.addEventListener('click', async () => {
      if (!conversationInstance) {

@@ -1,4 +1,5 @@
 // Visualization module: canvas-based idle circle and reactive line driven by audio
+import { createVisualizer } from './visualizers/registry.js';
 
 let audioCtx = null;
 let analyser = null;
@@ -6,13 +7,17 @@ let dataArray = null;
 let rafId = null;
 let canvas = null;
 let ctx = null;
-let vizMode = 'idle'; // 'idle' | 'line'
+let vizMode = 'idle'; // 'idle' | 'active'
 let silentGainNode = null;
 const mediaSourceMap = new WeakMap(); // HTMLMediaElement -> MediaElementAudioSourceNode
 const streamSourceMap = new WeakMap(); // MediaStream -> MediaStreamAudioSourceNode
 const playingEls = new Set();
 let activeConversation = null;
 let lastSdkBins = null;
+
+// Visualizer instance (pluggable)
+let visualizerInstance = null;
+let visualizerConfig = { mode: 'line', color: '#00ff80' };
 
 // Debug helpers
 let lastActive = false;
@@ -32,6 +37,15 @@ export const updateVisualizerMode = (mode) => {
         console.log('[viz] mode ->', mode);
         vizMode = mode;
     }
+};
+
+export const configureVisualizer = (config) => {
+  if (config) {
+    visualizerConfig = { ...visualizerConfig, ...config };
+    console.log('[viz] config updated:', visualizerConfig);
+    // Recreate visualizer instance with new config
+    visualizerInstance = createVisualizer(visualizerConfig.mode || 'line', visualizerConfig);
+  }
 };
 
 const buildAnalyserChain = (sourceNode) => {
@@ -167,81 +181,15 @@ const initCanvas = (canvasId) => {
 };
 
 const drawIdle = (tSec) => {
-  if (!ctx || !canvas) return;
-  const w = canvas.clientWidth;
-  const h = canvas.clientHeight;
-  ctx.clearRect(0, 0, w, h);
-  const cx = w / 2;
-  const cy = h / 2;
-  const base = Math.min(w, h) * 0.12;
-  const r = base * (1 + 0.06 * Math.sin(tSec * 2 * Math.PI * 0.9));
-  ctx.shadowColor = '#00ff80';
-  ctx.shadowBlur = 20;
-  ctx.strokeStyle = '#00ff80';
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.arc(cx, cy, r, 0, Math.PI * 2);
-  ctx.stroke();
+  if (!visualizerInstance) return;
+  visualizerInstance.drawIdle(ctx, canvas, tSec);
 };
 
 const drawLine = () => {
-  if (!ctx || !canvas) return;
-  const w = canvas.clientWidth;
-  const h = canvas.clientHeight;
-  ctx.clearRect(0, 0, w, h);
-  ctx.beginPath();
-  ctx.lineWidth = 3;
-  ctx.strokeStyle = '#00ff80';
-  ctx.shadowColor = '#00ff80';
-  ctx.shadowBlur = 16;
-  const midY = Math.floor(h / 2);
-
-  let rms = 0;
-  if (analyser && dataArray) {
-    analyser.getByteTimeDomainData(dataArray);
-    // Remove DC offset to keep center exactly at midY
-    let mean = 0;
-    for (let i = 0; i < dataArray.length; i++) mean += dataArray[i];
-    mean /= dataArray.length; // around 128, but measured live
-    const step = w / dataArray.length;
-    let sum = 0;
-    for (let i = 0; i < dataArray.length; i++) {
-      const centered = (dataArray[i] - mean) / 128; // now ~-1..1 around 0
-      const x = i * step;
-      const y = midY + centered * (h * 0.22);
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-      sum += centered * centered;
-    }
-    rms = Math.sqrt(sum / dataArray.length);
-  } else if (activeConversation?.getOutputByteFrequencyData) {
-    try {
-      const res = activeConversation.getOutputByteFrequencyData();
-      if (res && typeof res.then === 'function') {
-        res.then((bins) => { lastSdkBins = bins; }).catch(() => {});
-      } else if (res instanceof Uint8Array) {
-        lastSdkBins = res;
-      }
-    } catch {}
-
-    const bins = lastSdkBins;
-    const len = bins?.length || 0;
-    if (len > 0) {
-      // Center bins by subtracting their average so graph oscillates equally
-      let avg = 0;
-      for (let i = 0; i < len; i++) avg += bins[i];
-      avg /= len || 1;
-      const step = w / len;
-      let sum = 0;
-      for (let i = 0; i < len; i++) {
-        const centered = (bins[i] - avg) / 255; // roughly -0.5..0.5
-        const x = i * step;
-        const y = midY + centered * 2 * (h * 0.22); // scale to ~-1..1
-        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-        sum += centered * centered;
-      }
-      rms = Math.sqrt(sum / len) / 1.1; // rough normalization
-    }
-  }
+  if (!visualizerInstance) return;
+  
+  const result = visualizerInstance.draw(ctx, canvas, analyser, dataArray, activeConversation, lastSdkBins);
+  const rms = result?.rms || 0;
 
   // Debug: log when audio starts/stops
   const isActive = rms > ACTIVE_THRESHOLD;
@@ -257,11 +205,16 @@ const drawLine = () => {
     silentFrames = 0;
   }
   lastActive = isActive;
-
-  ctx.stroke();
 };
 
-export const initFullVisualizer = (canvasId = 'vizCanvas') => {
+export const initFullVisualizer = (canvasId = 'vizCanvas', config = null) => {
+  if (config) {
+    configureVisualizer(config);
+  } else if (!visualizerInstance) {
+    // Initialize with default config
+    visualizerInstance = createVisualizer(visualizerConfig.mode, visualizerConfig);
+  }
+  
   initCanvas(canvasId);
   cancelAnimationFrame(rafId);
   const tick = (tMs) => {
