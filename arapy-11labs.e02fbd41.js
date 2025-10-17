@@ -670,6 +670,7 @@ function hmrAccept(bundle /*: ParcelRequire */ , id /*: string */ ) {
 // Importa o Conversation do pacote @11labs/client
 var _client = require("@11labs/client");
 var _visualizerJs = require("./visualizer.js");
+var _subtitleJs = require("./subtitle.js");
 const startBtn = document.getElementById('startBtn');
 const stopBtn = document.getElementById('stopBtn');
 const statusEl = document.getElementById('status');
@@ -681,16 +682,30 @@ const urlParams = new URLSearchParams(window.location.search);
 let config = {
     name: urlParams.get('name'),
     agentId: urlParams.get('id'),
-    fullscreen: urlParams.get('fullscreen') === 'true' || urlParams.get('fullscreen') === '1'
+    mode: urlParams.get('mode') || 'card',
+    visualizationMode: urlParams.get('visualization') || null,
+    subtitlesEnabled: urlParams.get('subtitles') !== null ? urlParams.get('subtitles') === 'true' || urlParams.get('subtitles') === '1' : null
 };
-//try to load  a {name}.json from the server overwriting the whole config object
+console.log('Initial config from URL params:', config);
+//try to load  a {name}.json from the server and merge with URL params
 const loadConfig = async ()=>{
+    // Store URL parameters before loading JSON
+    const urlMode = urlParams.get('mode') || 'card';
+    const urlVisualization = urlParams.get('visualization');
+    const urlSubtitles = config.subtitlesEnabled;
     if (!config.agentId) try {
         const response = await fetch(`./agents/${config.name}.json`);
         if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         const data = await response.json();
-        config = data;
-        console.log('Config loaded:', config);
+        // Merge JSON data with URL parameters (URL params have priority)
+        config = {
+            ...data,
+            mode: urlMode,
+            visualizationMode: urlVisualization || data.defaultVisualization
+        };
+        // Override subtitles.enabled if URL parameter is provided
+        if (urlSubtitles !== null && config.subtitles) config.subtitles.enabled = urlSubtitles;
+        console.log('Config loaded and merged:', config);
     } catch (error) {
         console.error('Error loading config:', error);
     }
@@ -700,32 +715,131 @@ const loadConfig = async ()=>{
         startBtn.disabled = true;
         startBtn.innerText = "Agente n\xe3o encontrado!";
     }
-    // Override fullscreen from URL parameter
-    config.fullscreen = urlParams.get('fullscreen') === 'true' || urlParams.get('fullscreen') === '1';
-    // Initialize fullscreen mode after config is loaded
-    initializeFullscreenMode();
+    // Validate visualization configuration if provided
+    if (config.mode === 'fullscreen' || config.mode === 'painel') {
+        const vizError = validateVisualizationConfig();
+        if (vizError) {
+            showError(vizError);
+            return;
+        }
+    }
+    // Initialize display mode after config is loaded
+    if (config.mode === 'painel') initializePainelMode();
+    else if (config.mode === 'fullscreen') initializeFullscreenMode();
+};
+// Function to validate visualization configuration
+const validateVisualizationConfig = ()=>{
+    // Check if visualizations object exists
+    if (!config.visualizations || typeof config.visualizations !== 'object') return "Erro: Configura\xe7\xe3o de visualiza\xe7\xf5es n\xe3o encontrada no JSON do agente.";
+    // Get the visualization mode from URL or default
+    const vizMode = config.visualizationMode || config.defaultVisualization;
+    if (!vizMode) return "Erro: Nenhum modo de visualiza\xe7\xe3o especificado. Use o par\xe2metro ?visualization=<modo> na URL.";
+    // Check if the requested visualization exists
+    if (!config.visualizations[vizMode]) {
+        const availableModes = Object.keys(config.visualizations).join(', ');
+        return `Erro: Visualiza\xe7\xe3o "${vizMode}" n\xe3o encontrada. Modos dispon\xedveis: ${availableModes}`;
+    }
+    const vizConfig = config.visualizations[vizMode];
+    // Validate required parameters based on mode
+    if (!vizConfig.mode) return `Erro: Par\xe2metro "mode" ausente na configura\xe7\xe3o da visualiza\xe7\xe3o "${vizMode}".`;
+    // Mode-specific validation
+    if (vizConfig.mode === 'image') {
+        if (!vizConfig.talk_images || !Array.isArray(vizConfig.talk_images) || vizConfig.talk_images.length === 0) return `Erro: Par\xe2metro "talk_images" ausente ou inv\xe1lido na visualiza\xe7\xe3o "${vizMode}".`;
+        if (!vizConfig.idle_images || !Array.isArray(vizConfig.idle_images) || vizConfig.idle_images.length === 0) return `Erro: Par\xe2metro "idle_images" ausente ou inv\xe1lido na visualiza\xe7\xe3o "${vizMode}".`;
+    }
+    return null; // No errors
+};
+// Function to show error on screen
+const showError = (errorMessage)=>{
+    const cardEl = document.getElementById('card');
+    const fullModeEl = document.getElementById('fullMode');
+    // Hide both card and fullscreen mode
+    if (cardEl) cardEl.classList.add('hidden');
+    if (fullModeEl) fullModeEl.classList.add('hidden');
+    // Create error overlay
+    const errorDiv = document.createElement('div');
+    errorDiv.className = 'fixed inset-0 bg-red-900 flex items-center justify-center p-8';
+    errorDiv.innerHTML = `
+    <div class="bg-white rounded-lg shadow-2xl p-8 max-w-2xl">
+      <h1 class="text-3xl font-bold text-red-600 mb-4">\u{26A0}\u{FE0F} Erro de Configura\xe7\xe3o</h1>
+      <p class="text-gray-800 text-lg mb-6">${errorMessage}</p>
+      <div class="text-sm text-gray-600">
+        <p class="mb-2"><strong>Dicas:</strong></p>
+        <ul class="list-disc list-inside space-y-1">
+          <li>Verifique se o JSON do agente possui o objeto "visualizations"</li>
+          <li>Use ?visualization=<modo> na URL para especificar o modo</li>
+          <li>Certifique-se de que todos os par\xe2metros necess\xe1rios est\xe3o configurados</li>
+        </ul>
+      </div>
+    </div>
+  `;
+    document.body.appendChild(errorDiv);
 };
 // Função para inicializar modo fullscreen
 const initializeFullscreenMode = ()=>{
     const cardEl = document.getElementById('card');
     const fullModeEl = document.getElementById('fullMode');
-    if (config.fullscreen) {
+    if (config.mode === 'fullscreen') {
         console.log('[fullscreen] Initializing fullscreen mode');
         // Hide card, show overlay
         if (cardEl) cardEl.classList.add('hidden');
         if (fullModeEl) fullModeEl.classList.remove('hidden');
-        // Initialize visualizer with config
-        const vizConfig = config.visualizer || {
-            mode: 'line',
-            color: '#00ff80'
-        };
+        // Get visualization mode from URL or default
+        const vizMode = config.visualizationMode || config.defaultVisualization;
+        // Get the specific visualization config
+        const vizConfig = config.visualizations[vizMode];
+        console.log('[fullscreen] Using visualization mode:', vizMode);
         console.log('[fullscreen] Visualizer config:', vizConfig);
-        // Add backgroundImage to visualizer config if mode is 'line'
+        // Add backgroundImage to visualizer config if mode is 'line' and backgroundImage exists
         if (vizConfig.mode === 'line' && config.backgroundImage) vizConfig.backgroundImage = config.backgroundImage;
         (0, _visualizerJs.initFullVisualizer)('vizCanvas', vizConfig, fullModeEl);
         (0, _visualizerJs.observeMediaPlayback)();
+        // Initialize subtitles (uses defaults if no config provided)
+        const subtitlesConfig = config.subtitles || {};
+        // Check if enabled (default is true, can be overridden by JSON or URL)
+        const subtitlesEnabled = subtitlesConfig.enabled !== false;
+        if (subtitlesEnabled) {
+            (0, _subtitleJs.initSubtitles)(fullModeEl, subtitlesConfig);
+            console.log('[fullscreen] Subtitles initialized');
+        } else console.log('[fullscreen] Subtitles disabled');
         // Click anywhere to start/stop
         fullModeEl.addEventListener('click', async ()=>{
+            if (!conversationInstance) await startConversation();
+            else await endConversation();
+        });
+        // Idle by default
+        (0, _visualizerJs.updateVisualizerMode)('idle');
+    }
+};
+// Função para inicializar modo painel (384x768 LED panel)
+const initializePainelMode = ()=>{
+    const cardEl = document.getElementById('card');
+    const painelModeEl = document.getElementById('painelMode');
+    if (config.mode === 'painel') {
+        console.log('[painel] Initializing painel mode (384x768)');
+        // Hide card, show painel
+        if (cardEl) cardEl.classList.add('hidden');
+        if (painelModeEl) painelModeEl.classList.remove('hidden');
+        // Get visualization mode from URL or default
+        const vizMode = config.visualizationMode || config.defaultVisualization;
+        // Get the specific visualization config
+        const vizConfig = config.visualizations[vizMode];
+        console.log('[painel] Using visualization mode:', vizMode);
+        console.log('[painel] Visualizer config:', vizConfig);
+        // Add backgroundImage to visualizer config if mode is 'line' and backgroundImage exists
+        if (vizConfig.mode === 'line' && config.backgroundImage) vizConfig.backgroundImage = config.backgroundImage;
+        (0, _visualizerJs.initFullVisualizer)('painelCanvas', vizConfig, painelModeEl);
+        (0, _visualizerJs.observeMediaPlayback)();
+        // Initialize subtitles (uses defaults if no config provided)
+        const subtitlesConfig = config.subtitles || {};
+        // Check if enabled (default is true, can be overridden by JSON or URL)
+        const subtitlesEnabled = subtitlesConfig.enabled !== false;
+        if (subtitlesEnabled) {
+            (0, _subtitleJs.initSubtitles)(painelModeEl, subtitlesConfig);
+            console.log('[painel] Subtitles initialized');
+        } else console.log('[painel] Subtitles disabled');
+        // Click anywhere to start/stop
+        painelModeEl.addEventListener('click', async ()=>{
             if (!conversationInstance) await startConversation();
             else await endConversation();
         });
@@ -754,7 +868,7 @@ async function startConversation() {
             try {
                 audio.crossOrigin = 'anonymous';
             } catch  {}
-            if (config.fullscreen) {
+            if (config.mode === 'fullscreen' || config.mode === 'painel') {
                 await (0, _visualizerJs.connectMediaEl)(audio);
                 (0, _visualizerJs.updateVisualizerMode)('active');
             }
@@ -762,7 +876,7 @@ async function startConversation() {
             updateStatus("Reproduzindo \xe1udio de boas-vindas");
             await new Promise((resolve)=>{
                 audio.onended = ()=>{
-                    if (config.fullscreen) (0, _visualizerJs.updateVisualizerMode)('idle');
+                    if (config.mode === 'fullscreen' || config.mode === 'painel') (0, _visualizerJs.updateVisualizerMode)('idle');
                     resolve();
                 };
             });
@@ -782,7 +896,9 @@ async function startConversation() {
             },
             onMessage: (message)=>{
                 console.log('Mensagem recebida:', message);
-            // Aqui você pode, por exemplo, atualizar a interface com transcrições ou processar o áudio recebido.
+                // Handle subtitles if enabled (check if not explicitly disabled)
+                const subtitlesEnabled = config.subtitles ? config.subtitles.enabled !== false : true;
+                if (subtitlesEnabled) (0, _subtitleJs.handleConversationMessage)(message);
             },
             onError: (error)=>{
                 console.error("Erro na sess\xe3o:", error);
@@ -795,7 +911,7 @@ async function startConversation() {
                 console.log('Modo alterado:', mode);
                 // Control visualization directly based on SDK mode
                 try {
-                    if (config.fullscreen) {
+                    if (config.mode === 'fullscreen' || config.mode === 'painel') {
                         if (mode.mode == 'speaking') {
                             (0, _visualizerJs.updateVisualizerMode)('active');
                             console.log('[viz] speaking!!!');
@@ -809,7 +925,7 @@ async function startConversation() {
             }
         });
         // Try to hook SDK audio for visualization
-        if (config.fullscreen) {
+        if (config.mode === 'fullscreen' || config.mode === 'painel') {
             await (0, _visualizerJs.hookConversationAudio)(conversationInstance);
             (0, _visualizerJs.setActiveConversation)(conversationInstance);
         }
@@ -824,6 +940,8 @@ async function endConversation() {
         audio.pause();
         audio = null;
     }
+    // Clear subtitles
+    (0, _subtitleJs.clearSubtitles)();
     // Return to idle
     (0, _visualizerJs.updateVisualizerMode)('idle');
     if (conversationInstance) {
@@ -838,7 +956,7 @@ async function endConversation() {
 startBtn.addEventListener('click', startConversation);
 stopBtn.addEventListener('click', endConversation);
 
-},{"@11labs/client":"2ysAp","./visualizer.js":"huxr5"}],"2ysAp":[function(require,module,exports,__globalThis) {
+},{"@11labs/client":"2ysAp","./visualizer.js":"huxr5","./subtitle.js":"KX46x"}],"2ysAp":[function(require,module,exports,__globalThis) {
 var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
 parcelHelpers.defineInteropFlag(exports);
 parcelHelpers.export(exports, "Conversation", ()=>m);
@@ -1680,7 +1798,7 @@ const initFullVisualizer = (canvasId = 'vizCanvas', config = null, container = n
     rafId = requestAnimationFrame(tick);
 };
 
-},{"./visualizers/registry.js":"je9ID","@parcel/transformer-js/src/esmodule-helpers.js":"jnFvT"}],"je9ID":[function(require,module,exports,__globalThis) {
+},{"@parcel/transformer-js/src/esmodule-helpers.js":"jnFvT","./visualizers/registry.js":"je9ID"}],"je9ID":[function(require,module,exports,__globalThis) {
 // Visualization modes registry
 var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
 parcelHelpers.defineInteropFlag(exports);
@@ -1965,6 +2083,298 @@ class ImageVisualizer {
         this.lastFrameTime = performance.now();
     }
 }
+
+},{"@parcel/transformer-js/src/esmodule-helpers.js":"jnFvT"}],"KX46x":[function(require,module,exports,__globalThis) {
+// Subtitle component for displaying AI speech as dynamic captions
+// Integrates with 11Labs Conversation API onMessage callback
+var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
+parcelHelpers.defineInteropFlag(exports);
+parcelHelpers.export(exports, "initSubtitles", ()=>initSubtitles);
+parcelHelpers.export(exports, "configureSubtitles", ()=>configureSubtitles);
+parcelHelpers.export(exports, "setSubtitlesEnabled", ()=>setSubtitlesEnabled);
+parcelHelpers.export(exports, "handleConversationMessage", ()=>handleConversationMessage);
+parcelHelpers.export(exports, "clearSubtitles", ()=>clearSubtitles);
+parcelHelpers.export(exports, "destroySubtitles", ()=>destroySubtitles);
+parcelHelpers.export(exports, "setSubtitleText", ()=>setSubtitleText);
+let subtitleContainer = null;
+let currentSubtitle = null;
+let blockQueue = []; // Queue of text blocks
+let currentBlockWords = []; // Words in current block
+let displayedWords = []; // Words already displayed
+let isAnimating = false;
+let animationInterval = null;
+let blockTimeout = null;
+// Default configuration
+const defaultConfig = {
+    enabled: true,
+    wordsPerSecond: 3,
+    fadeOutDelay: 2000,
+    maxLines: 2,
+    maxCharsPerLine: 40,
+    blockDuration: 3000,
+    position: 'bottom',
+    fontSize: '2rem',
+    fontFamily: 'system-ui, -apple-system, sans-serif',
+    color: '#ffffff',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    textAlign: 'center',
+    padding: '1rem 2rem',
+    maxWidth: '80%'
+};
+let config = {
+    ...defaultConfig
+};
+const initSubtitles = (containerElement, customConfig = {})=>{
+    // Merge with defaults (customConfig overrides defaults)
+    config = {
+        ...defaultConfig,
+        ...customConfig
+    };
+    if (!containerElement) {
+        console.error('[subtitle] Container element not found');
+        return;
+    }
+    // Create or get subtitle container
+    subtitleContainer = containerElement.querySelector('.subtitle-container');
+    if (!subtitleContainer) {
+        subtitleContainer = document.createElement('div');
+        subtitleContainer.className = 'subtitle-container';
+        applyStyles();
+        containerElement.appendChild(subtitleContainer);
+    }
+    console.log('[subtitle] Initialized with config:', config);
+};
+// Apply CSS styles to subtitle container
+const applyStyles = ()=>{
+    if (!subtitleContainer) return;
+    const positions = {
+        bottom: {
+            bottom: '5%',
+            top: 'auto',
+            transform: 'translateX(-50%)'
+        },
+        top: {
+            top: '5%',
+            bottom: 'auto',
+            transform: 'translateX(-50%)'
+        },
+        center: {
+            top: '50%',
+            bottom: 'auto',
+            transform: 'translate(-50%, -50%)'
+        }
+    };
+    const pos = positions[config.position] || positions.bottom;
+    Object.assign(subtitleContainer.style, {
+        position: 'absolute',
+        left: '50%',
+        ...pos,
+        maxWidth: config.maxWidth,
+        width: 'auto',
+        padding: config.padding,
+        backgroundColor: config.backgroundColor,
+        color: config.color,
+        fontSize: config.fontSize,
+        fontFamily: config.fontFamily,
+        textAlign: config.textAlign,
+        borderRadius: '0.5rem',
+        pointerEvents: 'none',
+        zIndex: '1000',
+        opacity: '0',
+        transition: 'opacity 0.3s ease-in-out',
+        wordWrap: 'break-word',
+        lineHeight: '1.4',
+        textShadow: '2px 2px 4px rgba(0, 0, 0, 0.8)'
+    });
+};
+const configureSubtitles = (customConfig)=>{
+    config = {
+        ...config,
+        ...customConfig
+    };
+    if (subtitleContainer) applyStyles();
+    console.log('[subtitle] Configuration updated:', config);
+};
+const setSubtitlesEnabled = (enabled)=>{
+    config.enabled = enabled;
+    if (!enabled) clearSubtitles();
+    console.log('[subtitle] Enabled:', enabled);
+};
+const handleConversationMessage = (message)=>{
+    if (!config.enabled || !subtitleContainer) return;
+    console.log('[subtitle] Message received:', message);
+    // Filter out user messages - only show AI responses
+    // Check if message is from user
+    if (message.source === 'user' || message.role === 'user' || message.from === 'user') {
+        console.log('[subtitle] Ignoring user message');
+        return;
+    }
+    // Handle different message types from 11Labs
+    if (message.type === 'conversation_initiation_metadata') // Conversation started
+    console.log('[subtitle] Conversation started');
+    else if (message.type === 'audio' || message.type === 'message') // Audio message with transcript - only if from agent/assistant
+    {
+        if ((message.source === 'ai' || message.source === 'agent' || message.role === 'assistant' || !message.source) && (message.transcript || message.text)) {
+            const text = message.transcript || message.text;
+            displaySubtitle(text);
+        }
+    } else if (message.message && (message.source === 'ai' || message.source === 'agent' || !message.source)) // Generic message format from AI
+    displaySubtitle(message.message);
+};
+// Break text into blocks that fit within maxLines
+const breakIntoBlocks = (text)=>{
+    const words = text.trim().split(/\s+/);
+    const blocks = [];
+    const maxCharsPerBlock = config.maxCharsPerLine * config.maxLines;
+    let currentBlock = [];
+    let currentLength = 0;
+    for (const word of words){
+        const wordLength = word.length + 1; // +1 for space
+        // Check if word ends with sentence-ending punctuation
+        const endsWithPunctuation = /[.!?]$/.test(word);
+        // If adding this word exceeds the limit, start a new block
+        if (currentLength + wordLength > maxCharsPerBlock && currentBlock.length > 0) {
+            blocks.push(currentBlock.join(' '));
+            currentBlock = [
+                word
+            ];
+            currentLength = wordLength;
+        } else {
+            currentBlock.push(word);
+            currentLength += wordLength;
+            // If word ends with punctuation, complete the block (unless it would be too small)
+            if (endsWithPunctuation && currentLength >= config.maxCharsPerLine * 0.5) {
+                blocks.push(currentBlock.join(' '));
+                currentBlock = [];
+                currentLength = 0;
+            }
+        }
+    }
+    // Add the last block if not empty
+    if (currentBlock.length > 0) blocks.push(currentBlock.join(' '));
+    return blocks;
+};
+// Display subtitle in blocks
+const displaySubtitle = (text)=>{
+    if (!text || !subtitleContainer) return;
+    console.log('[subtitle] Displaying:', text);
+    // Clear previous animation
+    stopAnimation();
+    // Break text into blocks
+    blockQueue = breakIntoBlocks(text);
+    console.log('[subtitle] Blocks:', blockQueue);
+    // Start displaying blocks
+    displayNextBlock();
+};
+// Display next block in queue with word-by-word animation
+const displayNextBlock = ()=>{
+    if (blockQueue.length === 0) {
+        // All blocks displayed
+        fadeOutAfterDelay();
+        return;
+    }
+    // Get next block
+    const blockText = blockQueue.shift();
+    currentBlockWords = blockText.split(/\s+/);
+    displayedWords = [];
+    console.log('[subtitle] Showing block:', blockText);
+    // Clear container and prepare for animation
+    subtitleContainer.textContent = '';
+    subtitleContainer.style.opacity = '1';
+    // Start word-by-word animation
+    isAnimating = true;
+    const msPerWord = 1000 / config.wordsPerSecond;
+    animationInterval = setInterval(()=>{
+        if (currentBlockWords.length === 0) {
+            // Block complete, stop animation
+            clearInterval(animationInterval);
+            animationInterval = null;
+            isAnimating = false;
+            // Calculate remaining time for this block based on its size
+            const wordCount = displayedWords.length;
+            const animationDuration = wordCount * msPerWord;
+            // Use proportional duration: longer for full blocks, shorter for punctuation breaks
+            // Calculate how "full" the block is (0.0 to 1.0)
+            const blockText = displayedWords.join(' ');
+            const maxCharsPerBlock = config.maxCharsPerLine * config.maxLines;
+            const fillRatio = Math.min(1.0, blockText.length / maxCharsPerBlock);
+            // Minimum pause: 500ms, maximum: blockDuration
+            const minPause = 500;
+            const maxPause = config.blockDuration;
+            const pauseDuration = minPause + (maxPause - minPause) * fillRatio;
+            // Remaining time after animation
+            const remainingTime = Math.max(0, pauseDuration - animationDuration);
+            console.log('[subtitle] Block stats:', {
+                words: wordCount,
+                chars: blockText.length,
+                fillRatio: fillRatio.toFixed(2),
+                pauseDuration: Math.round(pauseDuration),
+                remainingTime: Math.round(remainingTime)
+            });
+            // Schedule next block or fade out
+            if (blockTimeout) clearTimeout(blockTimeout);
+            blockTimeout = setTimeout(()=>{
+                if (blockQueue.length > 0) displayNextBlock();
+                else fadeOutAfterDelay();
+            }, remainingTime);
+            return;
+        }
+        // Add next word
+        const nextWord = currentBlockWords.shift();
+        displayedWords.push(nextWord);
+        // Update display
+        subtitleContainer.textContent = displayedWords.join(' ');
+    }, msPerWord);
+};
+// Stop animation
+const stopAnimation = ()=>{
+    if (animationInterval) {
+        clearInterval(animationInterval);
+        animationInterval = null;
+    }
+    if (blockTimeout) {
+        clearTimeout(blockTimeout);
+        blockTimeout = null;
+    }
+    isAnimating = false;
+    blockQueue = [];
+    currentBlockWords = [];
+    displayedWords = [];
+};
+// Fade out subtitle after delay
+const fadeOutAfterDelay = ()=>{
+    setTimeout(()=>{
+        if (subtitleContainer && !isAnimating) {
+            subtitleContainer.style.opacity = '0';
+            setTimeout(()=>{
+                if (subtitleContainer && !isAnimating) subtitleContainer.textContent = '';
+            }, 300);
+        }
+    }, config.fadeOutDelay);
+};
+const clearSubtitles = ()=>{
+    stopAnimation();
+    if (subtitleContainer) {
+        subtitleContainer.style.opacity = '0';
+        setTimeout(()=>{
+            if (subtitleContainer) subtitleContainer.textContent = '';
+        }, 300);
+    }
+};
+const destroySubtitles = ()=>{
+    stopAnimation();
+    if (subtitleContainer && subtitleContainer.parentNode) subtitleContainer.parentNode.removeChild(subtitleContainer);
+    subtitleContainer = null;
+    config.enabled = false;
+    console.log('[subtitle] Destroyed');
+};
+const setSubtitleText = (text)=>{
+    if (!config.enabled || !subtitleContainer) return;
+    stopAnimation();
+    subtitleContainer.textContent = text;
+    subtitleContainer.style.opacity = '1';
+    fadeOutAfterDelay();
+};
 
 },{"@parcel/transformer-js/src/esmodule-helpers.js":"jnFvT"}]},["kxwl6","jOXmm"], "jOXmm", "parcelRequirea2e8", {})
 
