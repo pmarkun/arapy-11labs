@@ -30,10 +30,54 @@ const defaultConfig = {
 
 let config = { ...defaultConfig };
 
+// Helper function to adjust config for responsive design
+const getResponsiveConfig = (baseConfig) => {
+  const width = window.innerWidth;
+  const isMobile = width <= 768;
+  const isSmallMobile = width <= 480;
+  
+  const adjusted = { ...baseConfig };
+  
+  // Parse fontSize (e.g., "2rem" -> 2)
+  const fontSizeMatch = baseConfig.fontSize.match(/^([\d.]+)(rem|px|em)$/);
+  if (fontSizeMatch) {
+    const [, value, unit] = fontSizeMatch;
+    let numValue = parseFloat(value);
+    
+    // Adjust font size for mobile
+    if (isSmallMobile) {
+      numValue *= 0.5; // 50% for very small screens
+      adjusted.maxCharsPerLine = Math.floor(baseConfig.maxCharsPerLine * 0.6);
+      adjusted.padding = '0.5rem 1rem';
+    } else if (isMobile) {
+      numValue *= 0.65; // 65% for mobile
+      adjusted.maxCharsPerLine = Math.floor(baseConfig.maxCharsPerLine * 0.75);
+      adjusted.padding = '0.75rem 1.5rem';
+    }
+    
+    adjusted.fontSize = `${numValue}${unit}`;
+  }
+  
+  console.log('[subtitle] Responsive adjustments:', {
+    screenWidth: width,
+    isMobile,
+    isSmallMobile,
+    originalFontSize: baseConfig.fontSize,
+    adjustedFontSize: adjusted.fontSize,
+    originalMaxChars: baseConfig.maxCharsPerLine,
+    adjustedMaxChars: adjusted.maxCharsPerLine
+  });
+  
+  return adjusted;
+};
+
 // Initialize subtitle system
 export const initSubtitles = (containerElement, customConfig = {}) => {
   // Merge with defaults (customConfig overrides defaults)
-  config = { ...defaultConfig, ...customConfig };
+  const mergedConfig = { ...defaultConfig, ...customConfig };
+  
+  // Apply responsive adjustments
+  config = getResponsiveConfig(mergedConfig);
   
   if (!containerElement) {
     console.error('[subtitle] Container element not found');
@@ -49,6 +93,20 @@ export const initSubtitles = (containerElement, customConfig = {}) => {
     applyStyles();
     containerElement.appendChild(subtitleContainer);
   }
+  
+  // Add resize listener with debounce
+  let resizeTimer;
+  const handleResize = () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      const mergedConfig = { ...defaultConfig, ...customConfig };
+      config = getResponsiveConfig(mergedConfig);
+      applyStyles();
+      console.log('[subtitle] Config updated after resize');
+    }, 250); // Debounce 250ms
+  };
+  
+  window.addEventListener('resize', handleResize);
   
   console.log('[subtitle] Initialized with config:', config);
 };
