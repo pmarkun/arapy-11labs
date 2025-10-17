@@ -16,7 +16,7 @@ const urlParams = new URLSearchParams(window.location.search);
 let config = {
     name: urlParams.get('name'),
     agentId: urlParams.get('id'),
-    mode: urlParams.get('mode') || 'default',
+    fullscreen: urlParams.get('fullscreen') === 'true' || urlParams.get('fullscreen') === '1',
 }
 
 //try to load  a {name}.json from the server overwriting the whole config object
@@ -44,27 +44,51 @@ const loadConfig = async () => {
       startBtn.innerText = "Agente não encontrado!";
   }
 
-  // Setup full mode background if needed
-  config.mode = urlParams.get('mode') || config.mode || 'default';
-  setupFullModeBackground();
-
+  // Override fullscreen from URL parameter
+  config.fullscreen = urlParams.get('fullscreen') === 'true' || urlParams.get('fullscreen') === '1';
+  
+  // Initialize fullscreen mode after config is loaded
+  initializeFullscreenMode();
 };
 
-loadConfig();
-
-// Função para configurar o background image no modo full
-const setupFullModeBackground = () => {
-  if (config.mode === 'full' && config.backgroundImage) {
-    const fullModeEl = document.getElementById('fullMode');
-    if (fullModeEl) {
-      // Aplica a imagem de fundo com opacity 0.5 e blend com preto
-      fullModeEl.style.setProperty('--bg-image', `url('${config.backgroundImage}')`);
-      fullModeEl.classList.add('has-bg');
-      console.log('Background image configured:', config.backgroundImage);
+// Função para inicializar modo fullscreen
+const initializeFullscreenMode = () => {
+  const cardEl = document.getElementById('card');
+  const fullModeEl = document.getElementById('fullMode');
+  
+  if (config.fullscreen) {
+    console.log('[fullscreen] Initializing fullscreen mode');
+    // Hide card, show overlay
+    if (cardEl) cardEl.classList.add('hidden');
+    if (fullModeEl) fullModeEl.classList.remove('hidden');
+    
+    // Initialize visualizer with config
+    const vizConfig = config.visualizer || { mode: 'line', color: '#00ff80' };
+    console.log('[fullscreen] Visualizer config:', vizConfig);
+    
+    // Add backgroundImage to visualizer config if mode is 'line'
+    if (vizConfig.mode === 'line' && config.backgroundImage) {
+      vizConfig.backgroundImage = config.backgroundImage;
     }
+    
+    initFullVisualizer('vizCanvas', vizConfig, fullModeEl);
+    observeMediaPlayback();
+    
+    // Click anywhere to start/stop
+    fullModeEl.addEventListener('click', async () => {
+      if (!conversationInstance) {
+        await startConversation();
+      } else {
+        await endConversation();
+      }
+    });
+    
+    // Idle by default
+    updateVisualizerMode('idle');
   }
 };
 
+loadConfig();
 
  // Função para atualizar o status na interface
  const updateStatus = (status) => {
@@ -86,15 +110,15 @@ const setupFullModeBackground = () => {
 
        audio = new Audio(config.startAudio);
        try { audio.crossOrigin = 'anonymous'; } catch {}
-       if (config.mode === 'full') {
+       if (config.fullscreen) {
          await connectMediaEl(audio);
-         updateVisualizerMode('line');
+         updateVisualizerMode('active');
        }
         audio.play();
         updateStatus('Reproduzindo áudio de boas-vindas');
         await new Promise((resolve) => {
           audio.onended = () => {
-            if (config.mode === 'full') updateVisualizerMode('idle');
+            if (config.fullscreen) updateVisualizerMode('idle');
             resolve();
           };
         });  
@@ -128,12 +152,12 @@ const setupFullModeBackground = () => {
           console.log('Modo alterado:', mode);
           // Control visualization directly based on SDK mode
           try {
-            if (config.mode === 'full') {
+            if (config.fullscreen) {
               if (mode.mode == 'speaking') {
-                updateVisualizerMode('line');
+                updateVisualizerMode('active');
                 console.log('[viz] speaking!!!');
               } else {
-                // Any other mode (listening, idle, etc.) goes to circle
+                // Any other mode (listening, idle, etc.) goes to idle
                 updateVisualizerMode('idle');
                 console.log('[viz] idle!');
               }
@@ -143,7 +167,7 @@ const setupFullModeBackground = () => {
      });
 
       // Try to hook SDK audio for visualization
-      if (config.mode === 'full') {
+      if (config.fullscreen) {
         await hookConversationAudio(conversationInstance);
         setActiveConversation(conversationInstance);
       }
@@ -174,28 +198,3 @@ const setupFullModeBackground = () => {
  // Eventos dos botões
  startBtn.addEventListener('click', startConversation);
  stopBtn.addEventListener('click', endConversation);
-
- // Full mode UI wiring: toggle layout and click-to-start anywhere
- const cardEl = document.getElementById('card');
- const fullModeEl = document.getElementById('fullMode');
- if (config.mode === 'full') {
-   // Hide card, show overlay
-   if (cardEl) cardEl.classList.add('hidden');
-   if (fullModeEl) fullModeEl.classList.remove('hidden');
-   
-   // Initialize visualizer with config
-   const vizConfig = config.visualizer || { mode: 'line', color: '#00ff80' };
-   initFullVisualizer('vizCanvas', vizConfig);
-   observeMediaPlayback();
-   
-   // Click anywhere to start/stop
-   fullModeEl.addEventListener('click', async () => {
-     if (!conversationInstance) {
-       await startConversation();
-     } else {
-       await endConversation();
-     }
-   });
-  // Idle by default
-  updateVisualizerMode('idle');
- }

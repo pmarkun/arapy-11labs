@@ -1,8 +1,10 @@
 // Visualization modes registry
 import { LineVisualizer } from './lineVisualizer.js';
+import { ImageVisualizer } from './imageVisualizer.js';
 
 const visualizerRegistry = {
   line: LineVisualizer,
+  image: ImageVisualizer,
   // Add more visualizer modes here in the future
   // bars: BarsVisualizer,
   // circle: CircleVisualizer,

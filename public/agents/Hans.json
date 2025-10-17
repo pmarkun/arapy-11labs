@@ -5,6 +5,8 @@
     "backgroundImage": "images/hans-staden.jpg",
     "visualizer": {
         "mode": "line",
-        "color": "#ff6b35"
+        "color": "#ff6b35",
+        "lineWidth": 3,
+        "shadowBlur": 16
     }
 }

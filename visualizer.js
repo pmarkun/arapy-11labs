@@ -7,7 +7,7 @@ let dataArray = null;
 let rafId = null;
 let canvas = null;
 let ctx = null;
-let vizMode = 'idle'; // 'idle' | 'active'
+let vizState = 'idle'; // 'idle' | 'active' (state of the visualization)
 let silentGainNode = null;
 const mediaSourceMap = new WeakMap(); // HTMLMediaElement -> MediaElementAudioSourceNode
 const streamSourceMap = new WeakMap(); // MediaStream -> MediaStreamAudioSourceNode
@@ -18,6 +18,7 @@ let lastSdkBins = null;
 // Visualizer instance (pluggable)
 let visualizerInstance = null;
 let visualizerConfig = { mode: 'line', color: '#00ff80' };
+let containerElement = null;
 
 // Debug helpers
 let lastActive = false;
@@ -33,18 +34,28 @@ const ensureAudioContext = async () => {
 };
 
 export const updateVisualizerMode = (mode) => {
-    if (mode !== vizMode) {
-        console.log('[viz] mode ->', mode);
-        vizMode = mode;
+    if (mode !== vizState) {
+        console.log('[viz] state ->', mode);
+        vizState = mode;
     }
 };
 
-export const configureVisualizer = (config) => {
+export const configureVisualizer = (config, container = null) => {
   if (config) {
     visualizerConfig = { ...visualizerConfig, ...config };
     console.log('[viz] config updated:', visualizerConfig);
     // Recreate visualizer instance with new config
     visualizerInstance = createVisualizer(visualizerConfig.mode || 'line', visualizerConfig);
+    
+    // Store container reference
+    if (container) {
+      containerElement = container;
+    }
+    
+    // Call setup method if visualizer has one
+    if (visualizerInstance && typeof visualizerInstance.setup === 'function' && containerElement) {
+      visualizerInstance.setup(containerElement);
+    }
   }
 };
 
@@ -80,7 +91,7 @@ export const connectMediaEl = async (el) => {
   // Track play/pause events to control visualization
   el.addEventListener('play', () => {
     playingEls.add(el);
-    updateVisualizerMode('line');
+    updateVisualizerMode('active');
     console.log('[viz] element play');
   });
   const onStop = () => {
@@ -101,7 +112,7 @@ export const connectMediaStream = async (stream) => {
     if (source) streamSourceMap.set(stream, source);
   }
   if (source) buildAnalyserChain(source);
-  updateVisualizerMode('line');
+  updateVisualizerMode('active');
   console.log('[viz] MediaStream connected with tracks:', stream.getTracks().map(t => t.kind + ':' + t.readyState));
   stream.getTracks().forEach(t => t.addEventListener('ended', () => {
     if (stream.getTracks().every(tr => tr.readyState === 'ended')) {
@@ -117,7 +128,7 @@ export const observeMediaPlayback = () => {
     if (type === 'play') {
       await connectMediaEl(target);
       playingEls.add(target);
-      updateVisualizerMode('line');
+      updateVisualizerMode('active');
       console.log('[viz] global play', target.tagName);
     } else {
       playingEls.delete(target);
@@ -185,7 +196,7 @@ const drawIdle = (tSec) => {
   visualizerInstance.drawIdle(ctx, canvas, tSec);
 };
 
-const drawLine = () => {
+const drawActive = () => {
   if (!visualizerInstance) return;
   
   const result = visualizerInstance.draw(ctx, canvas, analyser, dataArray, activeConversation, lastSdkBins);
@@ -207,19 +218,33 @@ const drawLine = () => {
   lastActive = isActive;
 };
 
-export const initFullVisualizer = (canvasId = 'vizCanvas', config = null) => {
+export const initFullVisualizer = (canvasId = 'vizCanvas', config = null, container = null) => {
+  // Store container reference
+  if (container) {
+    containerElement = container;
+  }
+  
   if (config) {
-    configureVisualizer(config);
+    configureVisualizer(config, containerElement);
   } else if (!visualizerInstance) {
     // Initialize with default config
     visualizerInstance = createVisualizer(visualizerConfig.mode, visualizerConfig);
+    // Call setup if we have a container
+    if (visualizerInstance && typeof visualizerInstance.setup === 'function' && containerElement) {
+      visualizerInstance.setup(containerElement);
+    }
   }
   
   initCanvas(canvasId);
   cancelAnimationFrame(rafId);
   const tick = (tMs) => {
     const tSec = tMs / 1000;
-    if (vizMode === 'line') drawLine(); else drawIdle(tSec);
+    // Use vizState to determine if active or idle, not visualizer mode
+    if (vizState === 'active' || vizState === 'line') {
+      drawActive();
+    } else {
+      drawIdle(tSec);
+    }
     rafId = requestAnimationFrame(tick);
   };
   rafId = requestAnimationFrame(tick);

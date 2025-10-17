@@ -4,6 +4,16 @@ export class LineVisualizer {
     this.color = config.color || '#00ff80';
     this.shadowBlur = config.shadowBlur || 16;
     this.lineWidth = config.lineWidth || 3;
+    this.backgroundImage = config.backgroundImage || null;
+  }
+
+  setup(containerElement) {
+    // Setup background image for line visualizer
+    if (containerElement && this.backgroundImage) {
+      containerElement.style.setProperty('--bg-image', `url('${this.backgroundImage}')`);
+      containerElement.classList.add('has-bg');
+      console.log('[LineVisualizer] Background image configured:', this.backgroundImage);
+    }
   }
 
   draw(ctx, canvas, analyser, dataArray, activeConversation, lastSdkBins) {
