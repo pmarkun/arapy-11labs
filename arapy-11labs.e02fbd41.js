@@ -676,6 +676,7 @@ const stopBtn = document.getElementById('stopBtn');
 const statusEl = document.getElementById('status');
 let conversationInstance = null;
 let audio = null;
+let isStarting = false; // Flag to prevent double-click
 // Visualizer state is managed in visualizer.js
 // on page load: check for name and id parameters in url, then set the <span id=name> object
 const urlParams = new URLSearchParams(window.location.search);
@@ -854,6 +855,12 @@ const updateStatus = (status)=>{
 };
 // Função para iniciar a conversa
 async function startConversation() {
+    // Prevent double-click/double-start
+    if (isStarting || conversationInstance) {
+        console.log('[startConversation] Already starting or active, ignoring...');
+        return;
+    }
+    isStarting = true;
     try {
         // Primeiro, solicite acesso ao microfone e explique o porquê ao usuário
         await navigator.mediaDevices.getUserMedia({
@@ -929,9 +936,12 @@ async function startConversation() {
             await (0, _visualizerJs.hookConversationAudio)(conversationInstance);
             (0, _visualizerJs.setActiveConversation)(conversationInstance);
         }
+        // Successfully started - reset flag
+        isStarting = false;
     } catch (error) {
         console.error('Erro ao iniciar a conversa:', error);
         updateStatus('Erro ao iniciar');
+        isStarting = false; // Reset flag on error
     }
 }
 // Função para encerrar a conversa
@@ -948,6 +958,8 @@ async function endConversation() {
         await conversationInstance.endSession();
         conversationInstance = null;
     }
+    // Reset starting flag
+    isStarting = false;
     updateStatus('Desconectado');
     startBtn.classList.remove('hidden');
     stopBtn.classList.add('hidden');
@@ -2124,12 +2136,50 @@ const defaultConfig = {
 let config = {
     ...defaultConfig
 };
+// Helper function to adjust config for responsive design
+const getResponsiveConfig = (baseConfig)=>{
+    const width = window.innerWidth;
+    const isMobile = width <= 768;
+    const isSmallMobile = width <= 480;
+    const adjusted = {
+        ...baseConfig
+    };
+    // Parse fontSize (e.g., "2rem" -> 2)
+    const fontSizeMatch = baseConfig.fontSize.match(/^([\d.]+)(rem|px|em)$/);
+    if (fontSizeMatch) {
+        const [, value, unit] = fontSizeMatch;
+        let numValue = parseFloat(value);
+        // Adjust font size for mobile
+        if (isSmallMobile) {
+            numValue *= 0.5; // 50% for very small screens
+            adjusted.maxCharsPerLine = Math.floor(baseConfig.maxCharsPerLine * 0.6);
+            adjusted.padding = '0.5rem 1rem';
+        } else if (isMobile) {
+            numValue *= 0.65; // 65% for mobile
+            adjusted.maxCharsPerLine = Math.floor(baseConfig.maxCharsPerLine * 0.75);
+            adjusted.padding = '0.75rem 1.5rem';
+        }
+        adjusted.fontSize = `${numValue}${unit}`;
+    }
+    console.log('[subtitle] Responsive adjustments:', {
+        screenWidth: width,
+        isMobile,
+        isSmallMobile,
+        originalFontSize: baseConfig.fontSize,
+        adjustedFontSize: adjusted.fontSize,
+        originalMaxChars: baseConfig.maxCharsPerLine,
+        adjustedMaxChars: adjusted.maxCharsPerLine
+    });
+    return adjusted;
+};
 const initSubtitles = (containerElement, customConfig = {})=>{
     // Merge with defaults (customConfig overrides defaults)
-    config = {
+    const mergedConfig = {
         ...defaultConfig,
         ...customConfig
     };
+    // Apply responsive adjustments
+    config = getResponsiveConfig(mergedConfig);
     if (!containerElement) {
         console.error('[subtitle] Container element not found');
         return;
@@ -2142,6 +2192,21 @@ const initSubtitles = (containerElement, customConfig = {})=>{
         applyStyles();
         containerElement.appendChild(subtitleContainer);
     }
+    // Add resize listener with debounce
+    let resizeTimer;
+    const handleResize = ()=>{
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(()=>{
+            const mergedConfig = {
+                ...defaultConfig,
+                ...customConfig
+            };
+            config = getResponsiveConfig(mergedConfig);
+            applyStyles();
+            console.log('[subtitle] Config updated after resize');
+        }, 250); // Debounce 250ms
+    };
+    window.addEventListener('resize', handleResize);
     console.log('[subtitle] Initialized with config:', config);
 };
 // Apply CSS styles to subtitle container
