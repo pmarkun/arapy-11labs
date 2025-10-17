@@ -681,7 +681,7 @@ const urlParams = new URLSearchParams(window.location.search);
 let config = {
     name: urlParams.get('name'),
     agentId: urlParams.get('id'),
-    mode: urlParams.get('mode') || 'default'
+    fullscreen: urlParams.get('fullscreen') === 'true' || urlParams.get('fullscreen') === '1'
 };
 //try to load  a {name}.json from the server overwriting the whole config object
 const loadConfig = async ()=>{
@@ -700,23 +700,40 @@ const loadConfig = async ()=>{
         startBtn.disabled = true;
         startBtn.innerText = "Agente n\xe3o encontrado!";
     }
-    // Setup full mode background if needed
-    config.mode = urlParams.get('mode') || config.mode || 'default';
-    setupFullModeBackground();
+    // Override fullscreen from URL parameter
+    config.fullscreen = urlParams.get('fullscreen') === 'true' || urlParams.get('fullscreen') === '1';
+    // Initialize fullscreen mode after config is loaded
+    initializeFullscreenMode();
 };
-loadConfig();
-// Função para configurar o background image no modo full
-const setupFullModeBackground = ()=>{
-    if (config.mode === 'full' && config.backgroundImage) {
-        const fullModeEl = document.getElementById('fullMode');
-        if (fullModeEl) {
-            // Aplica a imagem de fundo com opacity 0.5 e blend com preto
-            fullModeEl.style.setProperty('--bg-image', `url('${config.backgroundImage}')`);
-            fullModeEl.classList.add('has-bg');
-            console.log('Background image configured:', config.backgroundImage);
-        }
+// Função para inicializar modo fullscreen
+const initializeFullscreenMode = ()=>{
+    const cardEl = document.getElementById('card');
+    const fullModeEl = document.getElementById('fullMode');
+    if (config.fullscreen) {
+        console.log('[fullscreen] Initializing fullscreen mode');
+        // Hide card, show overlay
+        if (cardEl) cardEl.classList.add('hidden');
+        if (fullModeEl) fullModeEl.classList.remove('hidden');
+        // Initialize visualizer with config
+        const vizConfig = config.visualizer || {
+            mode: 'line',
+            color: '#00ff80'
+        };
+        console.log('[fullscreen] Visualizer config:', vizConfig);
+        // Add backgroundImage to visualizer config if mode is 'line'
+        if (vizConfig.mode === 'line' && config.backgroundImage) vizConfig.backgroundImage = config.backgroundImage;
+        (0, _visualizerJs.initFullVisualizer)('vizCanvas', vizConfig, fullModeEl);
+        (0, _visualizerJs.observeMediaPlayback)();
+        // Click anywhere to start/stop
+        fullModeEl.addEventListener('click', async ()=>{
+            if (!conversationInstance) await startConversation();
+            else await endConversation();
+        });
+        // Idle by default
+        (0, _visualizerJs.updateVisualizerMode)('idle');
     }
 };
+loadConfig();
 // Função para atualizar o status na interface
 const updateStatus = (status)=>{
     statusEl.textContent = "Status: " + status;
@@ -737,15 +754,15 @@ async function startConversation() {
             try {
                 audio.crossOrigin = 'anonymous';
             } catch  {}
-            if (config.mode === 'full') {
+            if (config.fullscreen) {
                 await (0, _visualizerJs.connectMediaEl)(audio);
-                (0, _visualizerJs.updateVisualizerMode)('line');
+                (0, _visualizerJs.updateVisualizerMode)('active');
             }
             audio.play();
             updateStatus("Reproduzindo \xe1udio de boas-vindas");
             await new Promise((resolve)=>{
                 audio.onended = ()=>{
-                    if (config.mode === 'full') (0, _visualizerJs.updateVisualizerMode)('idle');
+                    if (config.fullscreen) (0, _visualizerJs.updateVisualizerMode)('idle');
                     resolve();
                 };
             });
@@ -778,12 +795,12 @@ async function startConversation() {
                 console.log('Modo alterado:', mode);
                 // Control visualization directly based on SDK mode
                 try {
-                    if (config.mode === 'full') {
+                    if (config.fullscreen) {
                         if (mode.mode == 'speaking') {
-                            (0, _visualizerJs.updateVisualizerMode)('line');
+                            (0, _visualizerJs.updateVisualizerMode)('active');
                             console.log('[viz] speaking!!!');
                         } else {
-                            // Any other mode (listening, idle, etc.) goes to circle
+                            // Any other mode (listening, idle, etc.) goes to idle
                             (0, _visualizerJs.updateVisualizerMode)('idle');
                             console.log('[viz] idle!');
                         }
@@ -792,7 +809,7 @@ async function startConversation() {
             }
         });
         // Try to hook SDK audio for visualization
-        if (config.mode === 'full') {
+        if (config.fullscreen) {
             await (0, _visualizerJs.hookConversationAudio)(conversationInstance);
             (0, _visualizerJs.setActiveConversation)(conversationInstance);
         }
@@ -820,23 +837,6 @@ async function endConversation() {
 // Eventos dos botões
 startBtn.addEventListener('click', startConversation);
 stopBtn.addEventListener('click', endConversation);
-// Full mode UI wiring: toggle layout and click-to-start anywhere
-const cardEl = document.getElementById('card');
-const fullModeEl = document.getElementById('fullMode');
-if (config.mode === 'full') {
-    // Hide card, show overlay
-    if (cardEl) cardEl.classList.add('hidden');
-    if (fullModeEl) fullModeEl.classList.remove('hidden');
-    (0, _visualizerJs.initFullVisualizer)('vizCanvas');
-    (0, _visualizerJs.observeMediaPlayback)();
-    // Click anywhere to start/stop
-    fullModeEl.addEventListener('click', async ()=>{
-        if (!conversationInstance) await startConversation();
-        else await endConversation();
-    });
-    // Idle by default
-    (0, _visualizerJs.updateVisualizerMode)('idle');
-}
 
 },{"@11labs/client":"2ysAp","./visualizer.js":"huxr5"}],"2ysAp":[function(require,module,exports,__globalThis) {
 var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
@@ -1438,25 +1438,34 @@ exports.export = function(dest, destName, get) {
 var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
 parcelHelpers.defineInteropFlag(exports);
 parcelHelpers.export(exports, "updateVisualizerMode", ()=>updateVisualizerMode);
+parcelHelpers.export(exports, "configureVisualizer", ()=>configureVisualizer);
 parcelHelpers.export(exports, "connectMediaEl", ()=>connectMediaEl);
 parcelHelpers.export(exports, "connectMediaStream", ()=>connectMediaStream);
 parcelHelpers.export(exports, "observeMediaPlayback", ()=>observeMediaPlayback);
 parcelHelpers.export(exports, "hookConversationAudio", ()=>hookConversationAudio);
 parcelHelpers.export(exports, "setActiveConversation", ()=>setActiveConversation);
 parcelHelpers.export(exports, "initFullVisualizer", ()=>initFullVisualizer);
+var _registryJs = require("./visualizers/registry.js");
 let audioCtx = null;
 let analyser = null;
 let dataArray = null;
 let rafId = null;
 let canvas = null;
 let ctx = null;
-let vizMode = 'idle'; // 'idle' | 'line'
+let vizState = 'idle'; // 'idle' | 'active' (state of the visualization)
 let silentGainNode = null;
 const mediaSourceMap = new WeakMap(); // HTMLMediaElement -> MediaElementAudioSourceNode
 const streamSourceMap = new WeakMap(); // MediaStream -> MediaStreamAudioSourceNode
 const playingEls = new Set();
 let activeConversation = null;
 let lastSdkBins = null;
+// Visualizer instance (pluggable)
+let visualizerInstance = null;
+let visualizerConfig = {
+    mode: 'line',
+    color: '#00ff80'
+};
+let containerElement = null;
 // Debug helpers
 let lastActive = false;
 let silentFrames = 0;
@@ -1469,9 +1478,24 @@ const ensureAudioContext = async ()=>{
     } catch  {}
 };
 const updateVisualizerMode = (mode)=>{
-    if (mode !== vizMode) {
-        console.log('[viz] mode ->', mode);
-        vizMode = mode;
+    if (mode !== vizState) {
+        console.log('[viz] state ->', mode);
+        vizState = mode;
+    }
+};
+const configureVisualizer = (config, container = null)=>{
+    if (config) {
+        visualizerConfig = {
+            ...visualizerConfig,
+            ...config
+        };
+        console.log('[viz] config updated:', visualizerConfig);
+        // Recreate visualizer instance with new config
+        visualizerInstance = (0, _registryJs.createVisualizer)(visualizerConfig.mode || 'line', visualizerConfig);
+        // Store container reference
+        if (container) containerElement = container;
+        // Call setup method if visualizer has one
+        if (visualizerInstance && typeof visualizerInstance.setup === 'function' && containerElement) visualizerInstance.setup(containerElement);
     }
 };
 const buildAnalyserChain = (sourceNode)=>{
@@ -1516,7 +1540,7 @@ const connectMediaEl = async (el)=>{
     // Track play/pause events to control visualization
     el.addEventListener('play', ()=>{
         playingEls.add(el);
-        updateVisualizerMode('line');
+        updateVisualizerMode('active');
         console.log('[viz] element play');
     });
     const onStop = ()=>{
@@ -1540,7 +1564,7 @@ const connectMediaStream = async (stream)=>{
         if (source) streamSourceMap.set(stream, source);
     }
     if (source) buildAnalyserChain(source);
-    updateVisualizerMode('line');
+    updateVisualizerMode('active');
     console.log('[viz] MediaStream connected with tracks:', stream.getTracks().map((t)=>t.kind + ':' + t.readyState));
     stream.getTracks().forEach((t)=>t.addEventListener('ended', ()=>{
             if (stream.getTracks().every((tr)=>tr.readyState === 'ended')) {
@@ -1555,7 +1579,7 @@ const observeMediaPlayback = ()=>{
         if (type === 'play') {
             await connectMediaEl(target);
             playingEls.add(target);
-            updateVisualizerMode('line');
+            updateVisualizerMode('active');
             console.log('[viz] global play', target.tagName);
         } else {
             playingEls.delete(target);
@@ -1618,79 +1642,13 @@ const initCanvas = (canvasId)=>{
     window.addEventListener('resize', resize);
 };
 const drawIdle = (tSec)=>{
-    if (!ctx || !canvas) return;
-    const w = canvas.clientWidth;
-    const h = canvas.clientHeight;
-    ctx.clearRect(0, 0, w, h);
-    const cx = w / 2;
-    const cy = h / 2;
-    const base = Math.min(w, h) * 0.12;
-    const r = base * (1 + 0.06 * Math.sin(tSec * 2 * Math.PI * 0.9));
-    ctx.shadowColor = '#00ff80';
-    ctx.shadowBlur = 20;
-    ctx.strokeStyle = '#00ff80';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.stroke();
+    if (!visualizerInstance) return;
+    visualizerInstance.drawIdle(ctx, canvas, tSec);
 };
-const drawLine = ()=>{
-    if (!ctx || !canvas) return;
-    const w = canvas.clientWidth;
-    const h = canvas.clientHeight;
-    ctx.clearRect(0, 0, w, h);
-    ctx.beginPath();
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = '#00ff80';
-    ctx.shadowColor = '#00ff80';
-    ctx.shadowBlur = 16;
-    const midY = Math.floor(h / 2);
-    let rms = 0;
-    if (analyser && dataArray) {
-        analyser.getByteTimeDomainData(dataArray);
-        // Remove DC offset to keep center exactly at midY
-        let mean = 0;
-        for(let i = 0; i < dataArray.length; i++)mean += dataArray[i];
-        mean /= dataArray.length; // around 128, but measured live
-        const step = w / dataArray.length;
-        let sum = 0;
-        for(let i = 0; i < dataArray.length; i++){
-            const centered = (dataArray[i] - mean) / 128; // now ~-1..1 around 0
-            const x = i * step;
-            const y = midY + centered * (h * 0.22);
-            if (i === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
-            sum += centered * centered;
-        }
-        rms = Math.sqrt(sum / dataArray.length);
-    } else if (activeConversation?.getOutputByteFrequencyData) {
-        try {
-            const res = activeConversation.getOutputByteFrequencyData();
-            if (res && typeof res.then === 'function') res.then((bins)=>{
-                lastSdkBins = bins;
-            }).catch(()=>{});
-            else if (res instanceof Uint8Array) lastSdkBins = res;
-        } catch  {}
-        const bins = lastSdkBins;
-        const len = bins?.length || 0;
-        if (len > 0) {
-            // Center bins by subtracting their average so graph oscillates equally
-            let avg = 0;
-            for(let i = 0; i < len; i++)avg += bins[i];
-            avg /= len || 1;
-            const step = w / len;
-            let sum = 0;
-            for(let i = 0; i < len; i++){
-                const centered = (bins[i] - avg) / 255; // roughly -0.5..0.5
-                const x = i * step;
-                const y = midY + centered * 2 * (h * 0.22); // scale to ~-1..1
-                if (i === 0) ctx.moveTo(x, y);
-                else ctx.lineTo(x, y);
-                sum += centered * centered;
-            }
-            rms = Math.sqrt(sum / len) / 1.1; // rough normalization
-        }
-    }
+const drawActive = ()=>{
+    if (!visualizerInstance) return;
+    const result = visualizerInstance.draw(ctx, canvas, analyser, dataArray, activeConversation, lastSdkBins);
+    const rms = result?.rms || 0;
     // Debug: log when audio starts/stops
     const isActive = rms > ACTIVE_THRESHOLD;
     if (isActive && !lastActive) console.log('[viz] audio signal detected, rms=', rms.toFixed(3));
@@ -1699,19 +1657,314 @@ const drawLine = ()=>{
         if (lastActive && silentFrames > SILENT_FRAME_LIMIT) console.log('[viz] audio gone silent');
     } else silentFrames = 0;
     lastActive = isActive;
-    ctx.stroke();
 };
-const initFullVisualizer = (canvasId = 'vizCanvas')=>{
+const initFullVisualizer = (canvasId = 'vizCanvas', config = null, container = null)=>{
+    // Store container reference
+    if (container) containerElement = container;
+    if (config) configureVisualizer(config, containerElement);
+    else if (!visualizerInstance) {
+        // Initialize with default config
+        visualizerInstance = (0, _registryJs.createVisualizer)(visualizerConfig.mode, visualizerConfig);
+        // Call setup if we have a container
+        if (visualizerInstance && typeof visualizerInstance.setup === 'function' && containerElement) visualizerInstance.setup(containerElement);
+    }
     initCanvas(canvasId);
     cancelAnimationFrame(rafId);
     const tick = (tMs)=>{
         const tSec = tMs / 1000;
-        if (vizMode === 'line') drawLine();
+        // Use vizState to determine if active or idle, not visualizer mode
+        if (vizState === 'active' || vizState === 'line') drawActive();
         else drawIdle(tSec);
         rafId = requestAnimationFrame(tick);
     };
     rafId = requestAnimationFrame(tick);
 };
+
+},{"./visualizers/registry.js":"je9ID","@parcel/transformer-js/src/esmodule-helpers.js":"jnFvT"}],"je9ID":[function(require,module,exports,__globalThis) {
+// Visualization modes registry
+var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
+parcelHelpers.defineInteropFlag(exports);
+parcelHelpers.export(exports, "createVisualizer", ()=>createVisualizer);
+parcelHelpers.export(exports, "registerVisualizer", ()=>registerVisualizer);
+var _lineVisualizerJs = require("./lineVisualizer.js");
+var _imageVisualizerJs = require("./imageVisualizer.js");
+const visualizerRegistry = {
+    line: (0, _lineVisualizerJs.LineVisualizer),
+    image: (0, _imageVisualizerJs.ImageVisualizer)
+};
+function createVisualizer(mode, config) {
+    const VisualizerClass = visualizerRegistry[mode];
+    if (!VisualizerClass) {
+        console.warn(`[viz] Unknown visualizer mode: ${mode}, falling back to 'line'`);
+        return new (0, _lineVisualizerJs.LineVisualizer)(config);
+    }
+    return new VisualizerClass(config);
+}
+function registerVisualizer(mode, VisualizerClass) {
+    visualizerRegistry[mode] = VisualizerClass;
+}
+
+},{"./lineVisualizer.js":"48K6r","./imageVisualizer.js":"hCeB2","@parcel/transformer-js/src/esmodule-helpers.js":"jnFvT"}],"48K6r":[function(require,module,exports,__globalThis) {
+// Line visualization mode
+var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
+parcelHelpers.defineInteropFlag(exports);
+parcelHelpers.export(exports, "LineVisualizer", ()=>LineVisualizer);
+class LineVisualizer {
+    constructor(config = {}){
+        this.color = config.color || '#00ff80';
+        this.shadowBlur = config.shadowBlur || 16;
+        this.lineWidth = config.lineWidth || 3;
+        this.backgroundImage = config.backgroundImage || null;
+    }
+    setup(containerElement) {
+        // Setup background image for line visualizer
+        if (containerElement && this.backgroundImage) {
+            containerElement.style.setProperty('--bg-image', `url('${this.backgroundImage}')`);
+            containerElement.classList.add('has-bg');
+            console.log('[LineVisualizer] Background image configured:', this.backgroundImage);
+        }
+    }
+    draw(ctx, canvas, analyser, dataArray, activeConversation, lastSdkBins) {
+        if (!ctx || !canvas) return;
+        const w = canvas.clientWidth;
+        const h = canvas.clientHeight;
+        ctx.clearRect(0, 0, w, h);
+        ctx.beginPath();
+        ctx.lineWidth = this.lineWidth;
+        ctx.strokeStyle = this.color;
+        ctx.shadowColor = this.color;
+        ctx.shadowBlur = this.shadowBlur;
+        const midY = Math.floor(h / 2);
+        let rms = 0;
+        if (analyser && dataArray) {
+            analyser.getByteTimeDomainData(dataArray);
+            // Remove DC offset to keep center exactly at midY
+            let mean = 0;
+            for(let i = 0; i < dataArray.length; i++)mean += dataArray[i];
+            mean /= dataArray.length; // around 128, but measured live
+            const step = w / dataArray.length;
+            let sum = 0;
+            for(let i = 0; i < dataArray.length; i++){
+                const centered = (dataArray[i] - mean) / 128; // now ~-1..1 around 0
+                const x = i * step;
+                const y = midY + centered * (h * 0.22);
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+                sum += centered * centered;
+            }
+            rms = Math.sqrt(sum / dataArray.length);
+        } else if (activeConversation?.getOutputByteFrequencyData) {
+            try {
+                const res = activeConversation.getOutputByteFrequencyData();
+                if (res && typeof res.then === 'function') res.then((bins)=>{
+                    lastSdkBins = bins;
+                }).catch(()=>{});
+                else if (res instanceof Uint8Array) lastSdkBins = res;
+            } catch  {}
+            const bins = lastSdkBins;
+            const len = bins?.length || 0;
+            if (len > 0) {
+                // Center bins by subtracting their average so graph oscillates equally
+                let avg = 0;
+                for(let i = 0; i < len; i++)avg += bins[i];
+                avg /= len || 1;
+                const step = w / len;
+                let sum = 0;
+                for(let i = 0; i < len; i++){
+                    const centered = (bins[i] - avg) / 255; // roughly -0.5..0.5
+                    const x = i * step;
+                    const y = midY + centered * 2 * (h * 0.22); // scale to ~-1..1
+                    if (i === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                    sum += centered * centered;
+                }
+                rms = Math.sqrt(sum / len) / 1.1; // rough normalization
+            }
+        }
+        ctx.stroke();
+        return {
+            rms
+        };
+    }
+    drawIdle(ctx, canvas, tSec) {
+        if (!ctx || !canvas) return;
+        const w = canvas.clientWidth;
+        const h = canvas.clientHeight;
+        ctx.clearRect(0, 0, w, h);
+        const cx = w / 2;
+        const cy = h / 2;
+        const base = Math.min(w, h) * 0.12;
+        const r = base * (1 + 0.06 * Math.sin(tSec * 2 * Math.PI * 0.9));
+        ctx.shadowColor = this.color;
+        ctx.shadowBlur = 20;
+        ctx.strokeStyle = this.color;
+        ctx.lineWidth = this.lineWidth;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+}
+
+},{"@parcel/transformer-js/src/esmodule-helpers.js":"jnFvT"}],"hCeB2":[function(require,module,exports,__globalThis) {
+// Image visualization mode
+var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
+parcelHelpers.defineInteropFlag(exports);
+parcelHelpers.export(exports, "ImageVisualizer", ()=>ImageVisualizer);
+class ImageVisualizer {
+    constructor(config = {}){
+        console.log('[ImageVisualizer] Constructor called with config:', config);
+        this.mode = 'image';
+        this.interval = config.interval || 200; // ms between frames
+        this.talkImages = config.talk_images || [];
+        this.idleImages = config.idle_images || [];
+        this.backgroundColor = config.backgroundColor || '#000000';
+        console.log('[ImageVisualizer] Talk images:', this.talkImages);
+        console.log('[ImageVisualizer] Idle images:', this.idleImages);
+        // Preloaded images
+        this.talkImageElements = [];
+        this.idleImageElements = [];
+        this.imagesLoaded = false;
+        this.loadingPromise = null;
+        // Animation state
+        this.currentTalkFrame = 0;
+        this.lastFrameTime = 0;
+        this.currentIdleImage = null;
+        // Start preloading images
+        this.preloadImages();
+    }
+    setup(containerElement) {
+        // Setup background color for image visualizer
+        if (containerElement) {
+            containerElement.style.backgroundColor = this.backgroundColor;
+            console.log('[ImageVisualizer] Background color configured:', this.backgroundColor);
+            // If there's a background image class, remove it for image mode
+            containerElement.classList.remove('has-bg');
+            containerElement.style.removeProperty('--bg-image');
+        }
+    }
+    async preloadImages() {
+        if (this.loadingPromise) return this.loadingPromise;
+        this.loadingPromise = new Promise(async (resolve)=>{
+            const loadImage = (src)=>{
+                return new Promise((resolveImg, rejectImg)=>{
+                    const img = new Image();
+                    img.onload = ()=>resolveImg(img);
+                    img.onerror = ()=>{
+                        console.warn(`[ImageVisualizer] Failed to load image: ${src}`);
+                        rejectImg(new Error(`Failed to load ${src}`));
+                    };
+                    img.src = src;
+                });
+            };
+            try {
+                // Load all talk images
+                console.log('[ImageVisualizer] Preloading talk images:', this.talkImages);
+                const talkPromises = this.talkImages.map((src)=>loadImage(src).catch(()=>null));
+                this.talkImageElements = (await Promise.all(talkPromises)).filter((img)=>img !== null);
+                // Load all idle images
+                console.log('[ImageVisualizer] Preloading idle images:', this.idleImages);
+                const idlePromises = this.idleImages.map((src)=>loadImage(src).catch(()=>null));
+                this.idleImageElements = (await Promise.all(idlePromises)).filter((img)=>img !== null);
+                this.imagesLoaded = true;
+                console.log('[ImageVisualizer] All images preloaded successfully');
+                console.log(`  - Talk images: ${this.talkImageElements.length}`);
+                console.log(`  - Idle images: ${this.idleImageElements.length}`);
+                // Pick random idle image
+                if (this.idleImageElements.length > 0) this.currentIdleImage = this.idleImageElements[Math.floor(Math.random() * this.idleImageElements.length)];
+                resolve();
+            } catch (error) {
+                console.error('[ImageVisualizer] Error preloading images:', error);
+                this.imagesLoaded = true; // Mark as loaded anyway to avoid blocking
+                resolve();
+            }
+        });
+        return this.loadingPromise;
+    }
+    drawImage(ctx, canvas, img) {
+        if (!ctx || !canvas || !img) return;
+        const w = canvas.clientWidth;
+        const h = canvas.clientHeight;
+        // Clear canvas
+        ctx.clearRect(0, 0, w, h);
+        // Calculate scaling to fit image while maintaining aspect ratio
+        const imgAspect = img.width / img.height;
+        const canvasAspect = w / h;
+        let drawWidth, drawHeight, drawX, drawY;
+        if (imgAspect > canvasAspect) {
+            // Image is wider than canvas
+            drawWidth = w;
+            drawHeight = w / imgAspect;
+            drawX = 0;
+            drawY = (h - drawHeight) / 2;
+        } else {
+            // Image is taller than canvas
+            drawHeight = h;
+            drawWidth = h * imgAspect;
+            drawX = (w - drawWidth) / 2;
+            drawY = 0;
+        }
+        // Draw image centered and scaled
+        ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
+    }
+    draw(ctx, canvas, analyser, dataArray, activeConversation, lastSdkBins) {
+        if (!this.imagesLoaded || this.talkImageElements.length === 0) {
+            // Fallback: draw placeholder
+            this.drawPlaceholder(ctx, canvas, 'Loading...', '#00ff80');
+            return {
+                rms: 0
+            };
+        }
+        const now = performance.now();
+        // Check if it's time to advance frame
+        if (now - this.lastFrameTime >= this.interval) {
+            this.currentTalkFrame = (this.currentTalkFrame + 1) % this.talkImageElements.length;
+            this.lastFrameTime = now;
+        }
+        const currentImage = this.talkImageElements[this.currentTalkFrame];
+        this.drawImage(ctx, canvas, currentImage);
+        // Calculate RMS for activity detection (simplified for image mode)
+        let rms = 0.5; // Always consider "active" when speaking
+        return {
+            rms
+        };
+    }
+    drawIdle(ctx, canvas, tSec) {
+        if (!this.imagesLoaded) {
+            // Fallback: draw placeholder
+            this.drawPlaceholder(ctx, canvas, 'Loading...', '#00ff80');
+            return;
+        }
+        if (this.idleImageElements.length === 0) {
+            // No idle images, draw placeholder
+            this.drawPlaceholder(ctx, canvas, 'Idle', '#00ff80');
+            return;
+        }
+        // Draw current idle image
+        if (this.currentIdleImage) this.drawImage(ctx, canvas, this.currentIdleImage);
+    // Optionally, change idle image every N seconds
+    // For now, we keep the same random idle image
+    }
+    drawPlaceholder(ctx, canvas, text, color) {
+        if (!ctx || !canvas) return;
+        const w = canvas.clientWidth;
+        const h = canvas.clientHeight;
+        ctx.clearRect(0, 0, w, h);
+        ctx.fillStyle = color;
+        ctx.font = '24px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, w / 2, h / 2);
+    }
+    // Method to change idle image (can be called externally or on timer)
+    changeIdleImage() {
+        if (this.idleImageElements.length > 0) this.currentIdleImage = this.idleImageElements[Math.floor(Math.random() * this.idleImageElements.length)];
+    }
+    // Reset talk animation to first frame
+    resetTalkAnimation() {
+        this.currentTalkFrame = 0;
+        this.lastFrameTime = performance.now();
+    }
+}
 
 },{"@parcel/transformer-js/src/esmodule-helpers.js":"jnFvT"}]},["kxwl6","jOXmm"], "jOXmm", "parcelRequirea2e8", {})
 
