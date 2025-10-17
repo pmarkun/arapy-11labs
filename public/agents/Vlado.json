@@ -3,6 +3,16 @@
     "description": "A simple agent that uses the 11 Labs API to generate audio from text.",
     "agentId": "agent_9401k7jjjng0f1erseqt1m58dyg3",
     "defaultVisualization": "image",
+    "subtitles": {
+        "enabled": true,
+        "wordsPerSecond": 3,
+        "fadeOutDelay": 2000,
+        "maxLines": 2,
+        "position": "bottom",
+        "fontSize": "2rem",
+        "color": "#ffffff",
+        "backgroundColor": "rgba(0, 0, 0, 0.7)"
+    },
     "visualizations": {
         "image": {
             "mode": "image",

@@ -4,6 +4,16 @@
     "agentId": "agent_3101k5hvxh8eefbry47hz96g6skv",
     "backgroundImage": "images/hans-staden.jpg",
     "defaultVisualization": "line",
+    "subtitles": {
+        "enabled": true,
+        "wordsPerSecond": 2.5,
+        "fadeOutDelay": 2500,
+        "maxLines": 2,
+        "position": "bottom",
+        "fontSize": "2.5rem",
+        "color": "#ff6b35",
+        "backgroundColor": "rgba(0, 0, 0, 0.8)"
+    },
     "visualizations": {
         "line": {
             "mode": "line",

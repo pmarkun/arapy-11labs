@@ -1,6 +1,7 @@
 // Importa o Conversation do pacote @11labs/client
  import { Conversation } from '@11labs/client';
  import { initFullVisualizer, observeMediaPlayback, hookConversationAudio, connectMediaEl, setActiveConversation, updateVisualizerMode, configureVisualizer} from './visualizer.js';
+ import { initSubtitles, handleConversationMessage, configureSubtitles, clearSubtitles, setSubtitlesEnabled } from './subtitle.js';
 
  const startBtn = document.getElementById('startBtn');
  const stopBtn = document.getElementById('stopBtn');
@@ -171,6 +172,12 @@ const initializeFullscreenMode = () => {
     initFullVisualizer('vizCanvas', vizConfig, fullModeEl);
     observeMediaPlayback();
     
+    // Initialize subtitles if enabled
+    if (config.subtitles && config.subtitles.enabled) {
+      initSubtitles(fullModeEl, config.subtitles);
+      console.log('[fullscreen] Subtitles initialized');
+    }
+    
     // Click anywhere to start/stop
     fullModeEl.addEventListener('click', async () => {
       if (!conversationInstance) {
@@ -211,6 +218,11 @@ const initializePainelMode = () => {
     
     initFullVisualizer('painelCanvas', vizConfig, painelModeEl);
     observeMediaPlayback();
+    
+    // Initialize subtitles if enabled
+    if (config.subtitles && config.subtitles.enabled) {
+      initSubtitles(painelModeEl, config.subtitles);
+    }
     
     // Click anywhere to start/stop
     painelModeEl.addEventListener('click', async () => {
@@ -277,7 +289,11 @@ loadConfig();
        },
        onMessage: (message) => {
          console.log('Mensagem recebida:', message);
-         // Aqui você pode, por exemplo, atualizar a interface com transcrições ou processar o áudio recebido.
+         
+         // Handle subtitles if enabled
+         if (config.subtitles && config.subtitles.enabled) {
+           handleConversationMessage(message);
+         }
        },
        onError: (error) => {
          console.error('Erro na sessão:', error);
@@ -322,6 +338,9 @@ loadConfig();
       audio.pause();
       audio = null;
    }
+   // Clear subtitles
+   clearSubtitles();
+   
    // Return to idle
    updateVisualizerMode('idle');
    if (conversationInstance) {

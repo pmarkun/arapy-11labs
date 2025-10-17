@@ -34,12 +34,25 @@ Visualização otimizada para painel de LED com dimensões fixas de **384x768 pi
 ## Estrutura do JSON
 
 ```json
+## Estrutura do JSON
+
+```json
 {
     "name": "Nome do Agente",
     "agentId": "agent_id",
     "defaultVisualization": "image",
     "backgroundImage": "images/background.jpg",
     "startAudio": "audio/intro.mp3",
+    "subtitles": {
+        "enabled": true,
+        "wordsPerSecond": 3,
+        "fadeOutDelay": 2000,
+        "maxLines": 2,
+        "position": "bottom",
+        "fontSize": "2rem",
+        "color": "#ffffff",
+        "backgroundColor": "rgba(0, 0, 0, 0.7)"
+    },
     "visualizations": {
         "image": {
             "mode": "image",
@@ -55,6 +68,60 @@ Visualização otimizada para painel de LED com dimensões fixas de **384x768 pi
             "shadowBlur": 16
         }
     }
+}
+```
+
+## Campos obrigatórios:
+
+### Para todos os agentes:
+- `visualizations`: Objeto contendo as configurações de visualização
+- `defaultVisualization`: Nome da visualização padrão (usada quando o parâmetro URL não é fornecido)
+
+### Para legendas (opcional):
+- `subtitles.enabled`: Ativa/desativa as legendas (true/false)
+- `subtitles.wordsPerSecond`: Velocidade de exibição das palavras (padrão: 3)
+- `subtitles.fadeOutDelay`: Tempo em ms antes de desaparecer (padrão: 2000)
+- `subtitles.maxLines`: Número máximo de linhas (padrão: 2)
+- `subtitles.position`: Posição das legendas: 'bottom', 'top', 'center'
+- `subtitles.fontSize`: Tamanho da fonte CSS (padrão: '2rem')
+- `subtitles.color`: Cor do texto (padrão: '#ffffff')
+- `subtitles.backgroundColor`: Cor de fundo com transparência (padrão: 'rgba(0, 0, 0, 0.7)')
+
+### Para visualização do tipo "line":
+- `mode`: deve ser "line"
+- `color`: cor da linha (formato hexadecimal)
+
+### Para visualização do tipo "image":
+- `mode`: deve ser "image"
+- `talk_images`: Array com caminhos das imagens para quando está falando
+- `idle_images`: Array com caminhos das imagens para quando está inativo
+
+## Funcionalidades
+
+### 🎬 Legendas Dinâmicas
+
+O sistema possui um componente de legendas que exibe o texto falado pela IA de forma sincronizada:
+
+**Características:**
+- ✅ Animação palavra por palavra
+- ✅ Sincronização com a velocidade da fala
+- ✅ Fade in/out suave
+- ✅ Posicionamento configurável (bottom, top, center)
+- ✅ Estilo totalmente customizável via JSON
+- ✅ Suporte a múltiplas linhas
+- ✅ Integração automática com 11Labs API
+
+**Configuração:**
+```json
+"subtitles": {
+    "enabled": true,
+    "wordsPerSecond": 3,
+    "fadeOutDelay": 2000,
+    "maxLines": 2,
+    "position": "bottom",
+    "fontSize": "2rem",
+    "color": "#ffffff",
+    "backgroundColor": "rgba(0, 0, 0, 0.7)"
 }
 ```
 
