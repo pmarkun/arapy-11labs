@@ -3,6 +3,7 @@
     "description": "A simple agent that uses the 11 Labs API to generate audio from text.",
     "agentId": "agent_3101k5hvxh8eefbry47hz96g6skv",
     "backgroundImage": "images/hans-staden.jpg",
+    "backgroundOpacity": 0.5,
     "defaultVisualization": "line",
     "subtitles": {
         "enabled": true,

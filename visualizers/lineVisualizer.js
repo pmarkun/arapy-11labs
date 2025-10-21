@@ -5,14 +5,16 @@ export class LineVisualizer {
     this.shadowBlur = config.shadowBlur || 16;
     this.lineWidth = config.lineWidth || 3;
     this.backgroundImage = config.backgroundImage || null;
+    this.backgroundOpacity = config.backgroundOpacity !== undefined ? config.backgroundOpacity : 0.5;
   }
 
   setup(containerElement) {
     // Setup background image for line visualizer
     if (containerElement && this.backgroundImage) {
       containerElement.style.setProperty('--bg-image', `url('${this.backgroundImage}')`);
+      containerElement.style.setProperty('--bg-opacity', this.backgroundOpacity);
       containerElement.classList.add('has-bg');
-      console.log('[LineVisualizer] Background image configured:', this.backgroundImage);
+      console.log('[LineVisualizer] Background image configured:', this.backgroundImage, 'opacity:', this.backgroundOpacity);
     }
   }
 

@@ -172,9 +172,12 @@ const initializeFullscreenMode = () => {
     console.log('[fullscreen] Using visualization mode:', vizMode);
     console.log('[fullscreen] Visualizer config:', vizConfig);
     
-    // Add backgroundImage to visualizer config if mode is 'line' and backgroundImage exists
+    // Add backgroundImage and backgroundOpacity to visualizer config if mode is 'line' and backgroundImage exists
     if (vizConfig.mode === 'line' && config.backgroundImage) {
       vizConfig.backgroundImage = config.backgroundImage;
+      if (config.backgroundOpacity !== undefined) {
+        vizConfig.backgroundOpacity = config.backgroundOpacity;
+      }
     }
     
     initFullVisualizer('vizCanvas', vizConfig, fullModeEl);
@@ -225,9 +228,12 @@ const initializePainelMode = () => {
     console.log('[painel] Using visualization mode:', vizMode);
     console.log('[painel] Visualizer config:', vizConfig);
     
-    // Add backgroundImage to visualizer config if mode is 'line' and backgroundImage exists
+    // Add backgroundImage and backgroundOpacity to visualizer config if mode is 'line' and backgroundImage exists
     if (vizConfig.mode === 'line' && config.backgroundImage) {
       vizConfig.backgroundImage = config.backgroundImage;
+      if (config.backgroundOpacity !== undefined) {
+        vizConfig.backgroundOpacity = config.backgroundOpacity;
+      }
     }
     
     initFullVisualizer('painelCanvas', vizConfig, painelModeEl);
