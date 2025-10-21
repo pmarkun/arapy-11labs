@@ -19,7 +19,7 @@ export class LineVisualizer {
   }
 
   draw(ctx, canvas, analyser, dataArray, activeConversation, lastSdkBins) {
-    if (!ctx || !canvas) return;
+    if (!ctx || !canvas) return { rms: 0 };
     
     const w = canvas.clientWidth;
     const h = canvas.clientHeight;
@@ -32,54 +32,72 @@ export class LineVisualizer {
     const midY = Math.floor(h / 2);
 
     let rms = 0;
+    
+    // Strategy 1: Try to use the SDK's built-in getOutputByteFrequencyData() method
+    if (activeConversation?.getOutputByteFrequencyData) {
+      try {
+        const frequencyData = activeConversation.getOutputByteFrequencyData();
+        if (frequencyData && frequencyData.length > 0) {
+          // Convert frequency data to waveform-like visualization
+          const step = w / frequencyData.length;
+          let sum = 0;
+          
+          for (let i = 0; i < frequencyData.length; i++) {
+            const normalized = frequencyData[i] / 255; // 0..1
+            const x = i * step;
+            // Create wave effect from frequency data
+            const amplitude = normalized * (h * 0.3);
+            const y = midY + (Math.sin(i * 0.1) * amplitude) - (amplitude / 2);
+            
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+            
+            sum += normalized * normalized;
+          }
+          
+          rms = Math.sqrt(sum / frequencyData.length);
+          ctx.stroke();
+          return { rms };
+        }
+      } catch (e) {
+        console.warn('[LineVisualizer] getOutputByteFrequencyData failed:', e);
+      }
+    }
+    
+    // Strategy 2: Use external analyser if provided (fallback)
     if (analyser && dataArray) {
       analyser.getByteTimeDomainData(dataArray);
+      
       // Remove DC offset to keep center exactly at midY
       let mean = 0;
       for (let i = 0; i < dataArray.length; i++) mean += dataArray[i];
-      mean /= dataArray.length; // around 128, but measured live
+      mean /= dataArray.length;
+      
       const step = w / dataArray.length;
       let sum = 0;
+      
       for (let i = 0; i < dataArray.length; i++) {
-        const centered = (dataArray[i] - mean) / 128; // now ~-1..1 around 0
+        const centered = (dataArray[i] - mean) / 128; // -1..1 around 0
         const x = i * step;
         const y = midY + centered * (h * 0.22);
-        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+        
         sum += centered * centered;
       }
+      
       rms = Math.sqrt(sum / dataArray.length);
-    } else if (activeConversation?.getOutputByteFrequencyData) {
-      try {
-        const res = activeConversation.getOutputByteFrequencyData();
-        if (res && typeof res.then === 'function') {
-          res.then((bins) => { lastSdkBins = bins; }).catch(() => {});
-        } else if (res instanceof Uint8Array) {
-          lastSdkBins = res;
-        }
-      } catch {}
-
-      const bins = lastSdkBins;
-      const len = bins?.length || 0;
-      if (len > 0) {
-        // Center bins by subtracting their average so graph oscillates equally
-        let avg = 0;
-        for (let i = 0; i < len; i++) avg += bins[i];
-        avg /= len || 1;
-        const step = w / len;
-        let sum = 0;
-        for (let i = 0; i < len; i++) {
-          const centered = (bins[i] - avg) / 255; // roughly -0.5..0.5
-          const x = i * step;
-          const y = midY + centered * 2 * (h * 0.22); // scale to ~-1..1
-          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-          sum += centered * centered;
-        }
-        rms = Math.sqrt(sum / len) / 1.1; // rough normalization
-      }
+      ctx.stroke();
+      return { rms };
     }
-
+    
+    // Strategy 3: Draw flat line if no data available
+    ctx.moveTo(0, midY);
+    ctx.lineTo(w, midY);
     ctx.stroke();
-    return { rms };
+    
+    return { rms: 0 };
   }
 
   drawIdle(ctx, canvas, tSec) {
@@ -100,3 +118,4 @@ export class LineVisualizer {
     ctx.stroke();
   }
 }
+
