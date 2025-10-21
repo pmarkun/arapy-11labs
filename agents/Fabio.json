@@ -1,0 +1,16 @@
+{
+    "name": "Fábio Penteado",
+    "description": "Agente sem configuração de legendas - usa padrões",
+    "agentId": "agent_9201k7psbgqkectbddr6eq114b4n",
+    "backgroundImage": "agents/Fabio/background.png",
+    "backgroundOpacity": 1.0,
+    "defaultVisualization": "line",
+    "visualizations": {
+        "line": {
+            "mode": "line",
+            "color": "#000000",
+            "lineWidth": 4,
+            "shadowBlur": 10
+        }
+    }
+}

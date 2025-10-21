@@ -791,8 +791,11 @@ const initializeFullscreenMode = ()=>{
         const vizConfig = config.visualizations[vizMode];
         console.log('[fullscreen] Using visualization mode:', vizMode);
         console.log('[fullscreen] Visualizer config:', vizConfig);
-        // Add backgroundImage to visualizer config if mode is 'line' and backgroundImage exists
-        if (vizConfig.mode === 'line' && config.backgroundImage) vizConfig.backgroundImage = config.backgroundImage;
+        // Add backgroundImage and backgroundOpacity to visualizer config if mode is 'line' and backgroundImage exists
+        if (vizConfig.mode === 'line' && config.backgroundImage) {
+            vizConfig.backgroundImage = config.backgroundImage;
+            if (config.backgroundOpacity !== undefined) vizConfig.backgroundOpacity = config.backgroundOpacity;
+        }
         (0, _visualizerJs.initFullVisualizer)('vizCanvas', vizConfig, fullModeEl);
         (0, _visualizerJs.observeMediaPlayback)();
         // Initialize subtitles (uses defaults if no config provided)
@@ -827,8 +830,11 @@ const initializePainelMode = ()=>{
         const vizConfig = config.visualizations[vizMode];
         console.log('[painel] Using visualization mode:', vizMode);
         console.log('[painel] Visualizer config:', vizConfig);
-        // Add backgroundImage to visualizer config if mode is 'line' and backgroundImage exists
-        if (vizConfig.mode === 'line' && config.backgroundImage) vizConfig.backgroundImage = config.backgroundImage;
+        // Add backgroundImage and backgroundOpacity to visualizer config if mode is 'line' and backgroundImage exists
+        if (vizConfig.mode === 'line' && config.backgroundImage) {
+            vizConfig.backgroundImage = config.backgroundImage;
+            if (config.backgroundOpacity !== undefined) vizConfig.backgroundOpacity = config.backgroundOpacity;
+        }
         (0, _visualizerJs.initFullVisualizer)('painelCanvas', vizConfig, painelModeEl);
         (0, _visualizerJs.observeMediaPlayback)();
         // Initialize subtitles (uses defaults if no config provided)
@@ -1845,13 +1851,15 @@ class LineVisualizer {
         this.shadowBlur = config.shadowBlur || 16;
         this.lineWidth = config.lineWidth || 3;
         this.backgroundImage = config.backgroundImage || null;
+        this.backgroundOpacity = config.backgroundOpacity !== undefined ? config.backgroundOpacity : 0.5;
     }
     setup(containerElement) {
         // Setup background image for line visualizer
         if (containerElement && this.backgroundImage) {
             containerElement.style.setProperty('--bg-image', `url('${this.backgroundImage}')`);
+            containerElement.style.setProperty('--bg-opacity', this.backgroundOpacity);
             containerElement.classList.add('has-bg');
-            console.log('[LineVisualizer] Background image configured:', this.backgroundImage);
+            console.log('[LineVisualizer] Background image configured:', this.backgroundImage, 'opacity:', this.backgroundOpacity);
         }
     }
     draw(ctx, canvas, analyser, dataArray, activeConversation, lastSdkBins) {
