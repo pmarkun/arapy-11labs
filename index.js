@@ -1,6 +1,6 @@
 // Importa o Conversation do pacote @elevenlabs/client
  import { Conversation } from '@elevenlabs/client';
- import { initFullVisualizer, observeMediaPlayback, hookConversationAudio, connectMediaEl, setActiveConversation, updateVisualizerMode, configureVisualizer} from './visualizer.js';
+ import { initFullVisualizer, observeMediaPlayback, hookConversationAudio, connectMediaEl, setActiveConversation, updateVisualizerMode, getVisualizerMode, configureVisualizer} from './visualizer.js';
  import { initSubtitles, handleConversationMessage, configureSubtitles, clearSubtitles, setSubtitlesEnabled, handleInterruption } from './subtitle.js';
 
  const startBtn = document.getElementById('startBtn');
@@ -344,8 +344,11 @@ loadConfig();
           try {
             if (config.mode === 'fullscreen' || config.mode === 'painel') {
               if (mode.mode == 'speaking') {
-                updateVisualizerMode('active');
-                console.log('[viz] speaking!!!');
+                // Only update if not already active to avoid resetting animation
+                if (getVisualizerMode() !== 'active') {
+                  updateVisualizerMode('active');
+                  console.log('[viz] speaking started');
+                }
               } else {
                 // Any other mode (listening, idle, etc.) goes to idle
                 updateVisualizerMode('idle');

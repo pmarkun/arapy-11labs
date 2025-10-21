@@ -40,6 +40,10 @@ export const updateVisualizerMode = (mode) => {
     }
 };
 
+export const getVisualizerMode = () => {
+    return vizState;
+};
+
 export const configureVisualizer = (config, container = null) => {
   if (config) {
     visualizerConfig = { ...visualizerConfig, ...config };
