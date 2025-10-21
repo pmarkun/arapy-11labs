@@ -3,15 +3,15 @@
   "version": "0.0.1",
   "scripts": {
     "dev": "parcel index.html",
-    "build": "parcel build index.html --dist-dir dist --public-url ./ && cp -R public/* dist/",
-    "deploy": "gh-pages -d dist"
+    "build": "parcel build index.html --dist-dir dist --public-url ./ && cp -R public/* dist/ && cp .nojekyll dist/",
+    "deploy": "npm run build && gh-pages -d dist"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
   "dependencies": {
-  "@11labs/client": "^0.6.2"
+  "@elevenlabs/client": "^0.8.0"
   },
   "devDependencies": {
     "gh-pages": "^6.3.0",

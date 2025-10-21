@@ -1,5 +1,5 @@
-// Importa o Conversation do pacote @11labs/client
- import { Conversation } from '@11labs/client';
+// Importa o Conversation do pacote @elevenlabs/client
+ import { Conversation } from '@elevenlabs/client';
  import { initFullVisualizer, observeMediaPlayback, hookConversationAudio, connectMediaEl, setActiveConversation, updateVisualizerMode, configureVisualizer} from './visualizer.js';
  import { initSubtitles, handleConversationMessage, configureSubtitles, clearSubtitles, setSubtitlesEnabled } from './subtitle.js';
 
