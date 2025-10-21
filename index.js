@@ -9,7 +9,22 @@
  let conversationInstance = null;
  let audio = null;
  let isStarting = false; // Flag to prevent double-click
+ let clickToTalkOverlay = null; // Reference to the overlay element
 // Visualizer state is managed in visualizer.js
+
+// Helper functions for click-to-talk overlay
+const showClickToTalkOverlay = () => {
+  if (urlParams.get('ask') === 'false') return; // Do not show if askOverlay is false
+  if (clickToTalkOverlay) {
+    clickToTalkOverlay.classList.remove('hidden');
+  }
+};
+
+const hideClickToTalkOverlay = () => {
+  if (clickToTalkOverlay) {
+    clickToTalkOverlay.classList.add('hidden');
+  }
+};
 
 // on page load: check for name and id parameters in url, then set the <span id=name> object
 
@@ -164,6 +179,10 @@ const initializeFullscreenMode = () => {
     if (cardEl) cardEl.classList.add('hidden');
     if (fullModeEl) fullModeEl.classList.remove('hidden');
     
+    // Initialize click-to-talk overlay
+    clickToTalkOverlay = document.getElementById('clickToTalkOverlay');
+    showClickToTalkOverlay();
+    
     // Get visualization mode from URL or default
     const vizMode = config.visualizationMode || config.defaultVisualization;
     
@@ -219,6 +238,10 @@ const initializePainelMode = () => {
     // Hide card, show painel
     if (cardEl) cardEl.classList.add('hidden');
     if (painelModeEl) painelModeEl.classList.remove('hidden');
+    
+    // Initialize click-to-talk overlay
+    clickToTalkOverlay = document.getElementById('clickToTalkOverlay2');
+    showClickToTalkOverlay();
     
     // Get visualization mode from URL or default
     const vizMode = config.visualizationMode || config.defaultVisualization;
@@ -279,6 +302,9 @@ loadConfig();
      console.log('[startConversation] Already starting or active, ignoring...');
      return;
    }
+   
+   // Hide the click-to-talk overlay when starting
+   hideClickToTalkOverlay();
    
    isStarting = true;
    
@@ -391,6 +417,10 @@ loadConfig();
    
    // Return to idle
    updateVisualizerMode('idle');
+   
+   // Show the click-to-talk overlay when stopping
+   showClickToTalkOverlay();
+   
    if (conversationInstance) {
      await conversationInstance.endSession();
      conversationInstance = null;

@@ -62,17 +62,67 @@
       width: 384px;
       height: 768px;
     }
+
+    /* Click to talk overlay */
+    #clickToTalkOverlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-color: rgba(0, 0, 0, 0.6);
+      z-index: 1000;
+      opacity: 1;
+      transition: opacity 0.3s ease-in-out;
+      pointer-events: none;
+    }
+
+    #clickToTalkOverlay.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    #clickToTalkOverlay .message {
+      background-color: #1f2937;
+      padding: 30px 50px;
+      border-radius: 15px;
+      font-size: 24px;
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.95);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% {
+        transform: scale(1);
+      }
+      50% {
+        transform: scale(1.05);
+      }
+    }
   </style>
 </head>
 <body class="bg-gray-100 flex items-center justify-center min-h-screen">
   <!-- A full mode overlay (hidden by default) -->
   <div id="fullMode" class="hidden fixed inset-0 bg-black select-none cursor-pointer">
     <canvas id="vizCanvas" class="block w-full h-full"></canvas>
+    <!-- Click to talk overlay -->
+    <div id="clickToTalkOverlay" class="hidden">
+      <div class="message">Clique para conversar</div>
+    </div>
   </div>
 
   <!-- Painel mode - 384x768 LED panel (hidden by default) -->
   <div id="painelMode" class="hidden bg-black select-none cursor-pointer">
     <canvas id="painelCanvas" class="block"></canvas>
+    <!-- Click to talk overlay -->
+    <div id="clickToTalkOverlay2" class="hidden">
+      <div class="message">Clique para conversar</div>
+    </div>
   </div>
 
   <!-- Default card UI -->
