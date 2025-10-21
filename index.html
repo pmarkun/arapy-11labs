@@ -1,148 +1,50 @@
-<!DOCTYPE html><html lang="pt-br"><head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Retrovisor.IA - Consulta ao Passado</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <style>#fullMode:before {
-  content: "";
-  background-image: var(--bg-image);
-  opacity: var(--bg-opacity, .5);
-  z-index: -1;
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: cover;
-  display: none;
-  position: absolute;
-  inset: 0;
-}
-
-#fullMode.has-bg:before {
-  display: block;
-}
-
-#painelMode {
-  width: 384px;
-  height: 768px;
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  overflow: hidden;
-  transform: translate(-50%, -50%);
-}
-
-#painelMode:before {
-  content: "";
-  background-image: var(--bg-image);
-  opacity: var(--bg-opacity, .5);
-  z-index: -1;
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: cover;
-  display: none;
-  position: absolute;
-  inset: 0;
-}
-
-#painelMode.has-bg:before {
-  display: block;
-}
-
-#painelCanvas {
-  width: 384px;
-  height: 768px;
-}
-
-#clickToTalkOverlay {
-  z-index: 1000;
-  opacity: 1;
-  pointer-events: none;
-  background-color: #0009;
-  justify-content: center;
-  align-items: center;
-  width: 100%;
-  height: 100%;
-  transition: opacity .3s ease-in-out;
-  display: flex;
-  position: fixed;
-  top: 0;
-  left: 0;
-}
-
-#clickToTalkOverlay.hidden {
-  opacity: 0;
-  pointer-events: none;
-}
-
-#clickToTalkOverlay .message {
-  color: #fffffff2;
-  background-color: #1f2937;
-  border-radius: 15px;
-  padding: 30px 50px;
-  font-size: 24px;
-  font-weight: 600;
-  animation: 2s ease-in-out infinite pulse;
-  box-shadow: 0 10px 30px #0000004d;
-}
-
-@keyframes pulse {
-  0%, 100% {
-    transform: scale(1);
-  }
-
-  50% {
-    transform: scale(1.05);
-  }
-}
-</style>
-</head>
-<body class="bg-gray-100 flex items-center justify-center min-h-screen">
-  <!-- A full mode overlay (hidden by default) -->
-  <div id="fullMode" class="hidden fixed inset-0 bg-black select-none cursor-pointer">
-    <canvas id="vizCanvas" class="block w-full h-full"></canvas>
-    <!-- Click to talk overlay -->
-    <div id="clickToTalkOverlay" class="hidden">
-      <div class="message">Clique para conversar</div>
+<!DOCTYPE html><html lang=pt-br><meta charset=UTF-8><meta name=viewport content="width=device-width, initial-scale=1.0"><title>Retrovisor.IA - Consulta ao Passado</title><script src=https://cdn.tailwindcss.com></script><style>#fullMode:before{content:"";background-image:var(--bg-image);opacity:var(--bg-opacity,.5);z-index:-1;background-position:50%;background-repeat:no-repeat;background-size:cover;display:none;position:absolute;inset:0}#fullMode.has-bg:before{display:block}#painelMode{width:384px;height:768px;position:fixed;top:50%;left:50%;overflow:hidden;transform:translate(-50%,-50%)}#painelMode:before{content:"";background-image:var(--bg-image);opacity:var(--bg-opacity,.5);z-index:-1;background-position:50%;background-repeat:no-repeat;background-size:cover;display:none;position:absolute;inset:0}#painelMode.has-bg:before{display:block}#painelCanvas{width:384px;height:768px}#clickToTalkOverlay{z-index:1000;opacity:1;pointer-events:none;background-color:#0009;justify-content:center;align-items:center;width:100%;height:100%;transition:opacity .3s ease-in-out;display:flex;position:fixed;top:0;left:0}#clickToTalkOverlay.hidden{opacity:0;pointer-events:none}#clickToTalkOverlay .message{color:#fffffff2;background-color:#1f2937;border-radius:15px;padding:30px 50px;font-size:24px;font-weight:600;animation:2s ease-in-out infinite pulse;box-shadow:0 10px 30px #0000004d}@keyframes pulse{0%,to{transform:scale(1)}50%{transform:scale(1.05)}}</style><body class="bg-gray-100 flex items-center justify-center min-h-screen">
+  
+  <div id=fullMode class="bg-black cursor-pointer fixed hidden inset-0 select-none">
+    <canvas id=vizCanvas class="block h-full w-full"></canvas>
+    
+    <div id=clickToTalkOverlay class=hidden>
+      <div class=message>Clique para conversar</div>
     </div>
   </div>
 
-  <!-- Painel mode - 384x768 LED panel (hidden by default) -->
-  <div id="painelMode" class="hidden bg-black select-none cursor-pointer">
-    <canvas id="painelCanvas" class="block"></canvas>
-    <!-- Click to talk overlay -->
-    <div id="clickToTalkOverlay2" class="hidden">
-      <div class="message">Clique para conversar</div>
+  
+  <div id=painelMode class="bg-black cursor-pointer hidden select-none">
+    <canvas id=painelCanvas class=block></canvas>
+    
+    <div id=clickToTalkOverlay2 class=hidden>
+      <div class=message>Clique para conversar</div>
     </div>
   </div>
 
-  <!-- Default card UI -->
-  <div id="card" class="bg-white p-6 rounded shadow-md max-w-md w-full mx-4">
-    <h1 class="text-2xl sm:text-3xl md:text-4xl font-semibold text-center text-gray-800">
+  
+  <div id=card class="bg-white max-w-md mx-4 p-6 rounded shadow-md w-full">
+    <h1 class="font-semibold md:text-4xl sm:text-3xl text-2xl text-center text-gray-800">
       Retrovisor.IA 
-      <p id="name" class="text-blue-600"></p>
+      <p id=name class=text-blue-600></p>
     </h1>
     <p class="mt-4 text-center text-gray-600">
       Uma tecnologia para conversar com o passado e enxergar o invisível — com inteligência e memória.
     </p>
     
-    <div class="mt-6 flex justify-center space-x-4">
-      <button id="startBtn" class="px-5 py-2 rounded bg-blue-700 text-white hover:bg-blue-800 transition-colors duration-200 focus:outline-none">
+    <div class="flex justify-center mt-6 space-x-4">
+      <button id=startBtn class="bg-blue-700 duration-200 focus:outline-none hover:bg-blue-800 px-5 py-2 rounded text-white transition-colors">
         Iniciar
       </button>
-      <button id="stopBtn" class="px-5 py-2 rounded bg-gray-500 text-white hover:bg-gray-600 transition-colors duration-200 focus:outline-none hidden">
+      <button id=stopBtn class="bg-gray-500 duration-200 focus:outline-none hidden hover:bg-gray-600 px-5 py-2 rounded text-white transition-colors">
         Encerrar
       </button>
     </div>
     
-    <div id="status" class="mt-6 text-center text-sm text-gray-500">
+    <div id=status class="mt-6 text-center text-gray-500 text-sm">
       Status: Desconectado
     </div>
     
     <footer class="mt-8 text-center text-gray-500 text-xs">
-      Powered by <strong class="text-gray-800">Arapy.AI</strong><br>
+      Powered by <strong class=text-gray-800>Arapy.AI</strong><br>
       Desenvolvimento e consultoria em inteligência artificial e machine learning.
     </footer>
   </div>
   
-  <script type="module" src="/arapy-11labs.e02fbd41.js"></script>
+  <script type=module src=arapy-11labs.b2281d27.js></script>
 
-</body></html>
