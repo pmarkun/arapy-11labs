@@ -724,7 +724,16 @@ const statusEl = document.getElementById('status');
 let conversationInstance = null;
 let audio = null;
 let isStarting = false; // Flag to prevent double-click
+let clickToTalkOverlay = null; // Reference to the overlay element
 // Visualizer state is managed in visualizer.js
+// Helper functions for click-to-talk overlay
+const showClickToTalkOverlay = ()=>{
+    if (urlParams.get('ask') === 'false') return; // Do not show if askOverlay is false
+    if (clickToTalkOverlay) clickToTalkOverlay.classList.remove('hidden');
+};
+const hideClickToTalkOverlay = ()=>{
+    if (clickToTalkOverlay) clickToTalkOverlay.classList.add('hidden');
+};
 // on page load: check for name and id parameters in url, then set the <span id=name> object
 const urlParams = new URLSearchParams(window.location.search);
 let config = {
@@ -832,6 +841,9 @@ const initializeFullscreenMode = ()=>{
         // Hide card, show overlay
         if (cardEl) cardEl.classList.add('hidden');
         if (fullModeEl) fullModeEl.classList.remove('hidden');
+        // Initialize click-to-talk overlay
+        clickToTalkOverlay = document.getElementById('clickToTalkOverlay');
+        showClickToTalkOverlay();
         // Get visualization mode from URL or default
         const vizMode = config.visualizationMode || config.defaultVisualization;
         // Get the specific visualization config
@@ -871,6 +883,9 @@ const initializePainelMode = ()=>{
         // Hide card, show painel
         if (cardEl) cardEl.classList.add('hidden');
         if (painelModeEl) painelModeEl.classList.remove('hidden');
+        // Initialize click-to-talk overlay
+        clickToTalkOverlay = document.getElementById('clickToTalkOverlay2');
+        showClickToTalkOverlay();
         // Get visualization mode from URL or default
         const vizMode = config.visualizationMode || config.defaultVisualization;
         // Get the specific visualization config
@@ -913,6 +928,8 @@ async function startConversation() {
         console.log('[startConversation] Already starting or active, ignoring...');
         return;
     }
+    // Hide the click-to-talk overlay when starting
+    hideClickToTalkOverlay();
     isStarting = true;
     try {
         // Primeiro, solicite acesso ao microfone e explique o porquê ao usuário
@@ -982,6 +999,12 @@ async function startConversation() {
                         }
                     }
                 } catch  {}
+            },
+            onInterruption: ()=>{
+                console.log("Interrup\xe7\xe3o detectada pelo usu\xe1rio");
+                // Handle subtitle interruption
+                const subtitlesEnabled = config.subtitles ? config.subtitles.enabled !== false : true;
+                if (subtitlesEnabled) (0, _subtitleJs.handleInterruption)();
             }
         });
         // Try to hook SDK audio for visualization
@@ -1007,6 +1030,8 @@ async function endConversation() {
     (0, _subtitleJs.clearSubtitles)();
     // Return to idle
     (0, _visualizerJs.updateVisualizerMode)('idle');
+    // Show the click-to-talk overlay when stopping
+    showClickToTalkOverlay();
     if (conversationInstance) {
         await conversationInstance.endSession();
         conversationInstance = null;
@@ -1021,569 +1046,14 @@ async function endConversation() {
 startBtn.addEventListener('click', startConversation);
 stopBtn.addEventListener('click', endConversation);
 
-},{"./visualizer.js":"huxr5","@elevenlabs/client":"2WmgR","./subtitle.js":"KX46x"}],"huxr5":[function(require,module,exports,__globalThis) {
-// Visualization module: canvas-based idle circle and reactive line driven by audio
-var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
-parcelHelpers.defineInteropFlag(exports);
-parcelHelpers.export(exports, "updateVisualizerMode", ()=>updateVisualizerMode);
-parcelHelpers.export(exports, "configureVisualizer", ()=>configureVisualizer);
-parcelHelpers.export(exports, "connectMediaEl", ()=>connectMediaEl);
-parcelHelpers.export(exports, "connectMediaStream", ()=>connectMediaStream);
-parcelHelpers.export(exports, "observeMediaPlayback", ()=>observeMediaPlayback);
-parcelHelpers.export(exports, "hookConversationAudio", ()=>hookConversationAudio);
-parcelHelpers.export(exports, "setActiveConversation", ()=>setActiveConversation);
-parcelHelpers.export(exports, "initFullVisualizer", ()=>initFullVisualizer);
-var _registryJs = require("./visualizers/registry.js");
-let audioCtx = null;
-let analyser = null;
-let dataArray = null;
-let rafId = null;
-let canvas = null;
-let ctx = null;
-let vizState = 'idle'; // 'idle' | 'active' (state of the visualization)
-let silentGainNode = null;
-const mediaSourceMap = new WeakMap(); // HTMLMediaElement -> MediaElementAudioSourceNode
-const streamSourceMap = new WeakMap(); // MediaStream -> MediaStreamAudioSourceNode
-const playingEls = new Set();
-let activeConversation = null;
-let lastSdkBins = null;
-// Visualizer instance (pluggable)
-let visualizerInstance = null;
-let visualizerConfig = {
-    mode: 'line',
-    color: '#00ff80'
-};
-let containerElement = null;
-// Debug helpers
-let lastActive = false;
-let silentFrames = 0;
-const ACTIVE_THRESHOLD = 0.015; // RMS threshold
-const SILENT_FRAME_LIMIT = 20; // ~0.33s at 60fps
-const ensureAudioContext = async ()=>{
-    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    if (audioCtx.state === 'suspended') try {
-        await audioCtx.resume();
-    } catch  {}
-};
-const updateVisualizerMode = (mode)=>{
-    if (mode !== vizState) {
-        console.log('[viz] state ->', mode);
-        vizState = mode;
-    }
-};
-const configureVisualizer = (config, container = null)=>{
-    if (config) {
-        visualizerConfig = {
-            ...visualizerConfig,
-            ...config
-        };
-        console.log('[viz] config updated:', visualizerConfig);
-        // Recreate visualizer instance with new config
-        visualizerInstance = (0, _registryJs.createVisualizer)(visualizerConfig.mode || 'line', visualizerConfig);
-        // Store container reference
-        if (container) containerElement = container;
-        // Call setup method if visualizer has one
-        if (visualizerInstance && typeof visualizerInstance.setup === 'function' && containerElement) visualizerInstance.setup(containerElement);
-    }
-};
-const buildAnalyserChain = (sourceNode)=>{
-    analyser = audioCtx && audioCtx.createAnalyser ? audioCtx.createAnalyser() : null;
-    if (!analyser) return;
-    analyser.fftSize = 2048;
-    dataArray = new Uint8Array(analyser.frequencyBinCount);
-    try {
-        sourceNode.disconnect();
-    } catch  {}
-    sourceNode.connect(analyser);
-    // Keep graph alive but silent
-    if (!silentGainNode) {
-        silentGainNode = audioCtx.createGain();
-        silentGainNode.gain.value = 0.0;
-        silentGainNode.connect(audioCtx.destination);
-    }
-    try {
-        analyser.disconnect();
-    } catch  {}
-    analyser.connect(silentGainNode);
-};
-const connectMediaEl = async (el)=>{
-    if (!(el instanceof HTMLMediaElement)) return;
-    await ensureAudioContext();
-    let source = mediaSourceMap.get(el);
-    if (!source) {
-        try {
-            source = audioCtx.createMediaElementSource(el);
-        } catch (e) {
-            console.warn('[viz] createMediaElementSource failed', e);
-        }
-        if (source) mediaSourceMap.set(el, source);
-    }
-    if (source) buildAnalyserChain(source);
-    try {
-        el.crossOrigin = 'anonymous';
-    } catch  {}
-    console.log('[viz] MediaElement connected', {
-        src: el.currentSrc || el.src
-    });
-    // Track play/pause events to control visualization
-    el.addEventListener('play', ()=>{
-        playingEls.add(el);
-        updateVisualizerMode('active');
-        console.log('[viz] element play');
-    });
-    const onStop = ()=>{
-        playingEls.delete(el);
-        if (playingEls.size === 0) updateVisualizerMode('idle');
-        console.log('[viz] element stop/pause, playing count:', playingEls.size);
-    };
-    el.addEventListener('pause', onStop);
-    el.addEventListener('ended', onStop);
-};
-const connectMediaStream = async (stream)=>{
-    if (!(stream instanceof MediaStream)) return;
-    await ensureAudioContext();
-    let source = streamSourceMap.get(stream);
-    if (!source) {
-        try {
-            source = audioCtx.createMediaStreamSource(stream);
-        } catch (e) {
-            console.warn('[viz] createMediaStreamSource failed', e);
-        }
-        if (source) streamSourceMap.set(stream, source);
-    }
-    if (source) buildAnalyserChain(source);
-    updateVisualizerMode('active');
-    console.log('[viz] MediaStream connected with tracks:', stream.getTracks().map((t)=>t.kind + ':' + t.readyState));
-    stream.getTracks().forEach((t)=>t.addEventListener('ended', ()=>{
-            if (stream.getTracks().every((tr)=>tr.readyState === 'ended')) {
-                updateVisualizerMode('idle');
-                console.log('[viz] stream ended');
-            }
-        }));
-};
-const observeMediaPlayback = ()=>{
-    const handler = async (type, target)=>{
-        if (!(target instanceof HTMLMediaElement)) return;
-        if (type === 'play') {
-            await connectMediaEl(target);
-            playingEls.add(target);
-            updateVisualizerMode('active');
-            console.log('[viz] global play', target.tagName);
-        } else {
-            playingEls.delete(target);
-            if (playingEls.size === 0) updateVisualizerMode('idle');
-            console.log('[viz] global', type, 'playing count:', playingEls.size);
-        }
-    };
-    document.addEventListener('play', (e)=>handler('play', e.target), true);
-    document.addEventListener('pause', (e)=>handler('pause', e.target), true);
-    document.addEventListener('ended', (e)=>handler('ended', e.target), true);
-};
-const hookConversationAudio = async (conv)=>{
-    try {
-        if (!conv) return;
-        // New @elevenlabs/client API provides direct access to frequency data
-        // No need to hook into audio elements anymore
-        console.log('[viz] Conversation hooked - using SDK audio analysis methods');
-    } catch (e) {
-        console.warn('[viz] hookConversationAudio failed', e);
-    }
-};
-const setActiveConversation = (conv)=>{
-    activeConversation = conv;
-};
-const initCanvas = (canvasId)=>{
-    canvas = document.getElementById(canvasId);
-    if (!canvas) return;
-    ctx = canvas.getContext('2d');
-    const resize = ()=>{
-        const dpr = window.devicePixelRatio || 1;
-        const w = canvas.clientWidth || window.innerWidth;
-        const h = canvas.clientHeight || window.innerHeight;
-        canvas.width = Math.floor(w * dpr);
-        canvas.height = Math.floor(h * dpr);
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    };
-    resize();
-    window.addEventListener('resize', resize);
-};
-const drawIdle = (tSec)=>{
-    if (!visualizerInstance) return;
-    visualizerInstance.drawIdle(ctx, canvas, tSec);
-};
-const drawActive = ()=>{
-    if (!visualizerInstance) return;
-    // Try to get frequency data from the conversation SDK
-    let sdkData = null;
-    if (activeConversation) try {
-        // New @elevenlabs/client API methods
-        const outputData = activeConversation.getOutputByteFrequencyData?.();
-        if (outputData && outputData.length > 0) sdkData = outputData;
-    } catch (e) {
-    // Silently fail - SDK might not support this yet
-    }
-    // Use SDK data if available, otherwise fall back to analyser
-    const dataToUse = sdkData || dataArray;
-    const analyserToUse = sdkData ? null : analyser;
-    const result = visualizerInstance.draw(ctx, canvas, analyserToUse, dataToUse, activeConversation, sdkData);
-    const rms = result?.rms || 0;
-    // Debug: log when audio starts/stops
-    const isActive = rms > ACTIVE_THRESHOLD;
-    if (isActive && !lastActive) console.log('[viz] audio signal detected, rms=', rms.toFixed(3));
-    if (!isActive) {
-        silentFrames++;
-        if (lastActive && silentFrames > SILENT_FRAME_LIMIT) console.log('[viz] audio gone silent');
-    } else silentFrames = 0;
-    lastActive = isActive;
-};
-const initFullVisualizer = (canvasId = 'vizCanvas', config = null, container = null)=>{
-    // Store container reference
-    if (container) containerElement = container;
-    if (config) configureVisualizer(config, containerElement);
-    else if (!visualizerInstance) {
-        // Initialize with default config
-        visualizerInstance = (0, _registryJs.createVisualizer)(visualizerConfig.mode, visualizerConfig);
-        // Call setup if we have a container
-        if (visualizerInstance && typeof visualizerInstance.setup === 'function' && containerElement) visualizerInstance.setup(containerElement);
-    }
-    initCanvas(canvasId);
-    cancelAnimationFrame(rafId);
-    const tick = (tMs)=>{
-        const tSec = tMs / 1000;
-        // Use vizState to determine if active or idle, not visualizer mode
-        if (vizState === 'active' || vizState === 'line') drawActive();
-        else drawIdle(tSec);
-        rafId = requestAnimationFrame(tick);
-    };
-    rafId = requestAnimationFrame(tick);
-};
-
-},{"./visualizers/registry.js":"je9ID","@parcel/transformer-js/src/esmodule-helpers.js":"jnFvT"}],"je9ID":[function(require,module,exports,__globalThis) {
-// Visualization modes registry
-var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
-parcelHelpers.defineInteropFlag(exports);
-parcelHelpers.export(exports, "createVisualizer", ()=>createVisualizer);
-parcelHelpers.export(exports, "registerVisualizer", ()=>registerVisualizer);
-var _lineVisualizerJs = require("./lineVisualizer.js");
-var _imageVisualizerJs = require("./imageVisualizer.js");
-const visualizerRegistry = {
-    line: (0, _lineVisualizerJs.LineVisualizer),
-    image: (0, _imageVisualizerJs.ImageVisualizer)
-};
-function createVisualizer(mode, config) {
-    const VisualizerClass = visualizerRegistry[mode];
-    if (!VisualizerClass) {
-        console.warn(`[viz] Unknown visualizer mode: ${mode}, falling back to 'line'`);
-        return new (0, _lineVisualizerJs.LineVisualizer)(config);
-    }
-    return new VisualizerClass(config);
-}
-function registerVisualizer(mode, VisualizerClass) {
-    visualizerRegistry[mode] = VisualizerClass;
-}
-
-},{"./lineVisualizer.js":"48K6r","@parcel/transformer-js/src/esmodule-helpers.js":"jnFvT","./imageVisualizer.js":"hCeB2"}],"48K6r":[function(require,module,exports,__globalThis) {
-// Line visualization mode
-var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
-parcelHelpers.defineInteropFlag(exports);
-parcelHelpers.export(exports, "LineVisualizer", ()=>LineVisualizer);
-class LineVisualizer {
-    constructor(config = {}){
-        this.color = config.color || '#00ff80';
-        this.shadowBlur = config.shadowBlur || 16;
-        this.lineWidth = config.lineWidth || 3;
-        this.backgroundImage = config.backgroundImage || null;
-        this.backgroundOpacity = config.backgroundOpacity !== undefined ? config.backgroundOpacity : 0.5;
-    }
-    setup(containerElement) {
-        // Setup background image for line visualizer
-        if (containerElement && this.backgroundImage) {
-            containerElement.style.setProperty('--bg-image', `url('${this.backgroundImage}')`);
-            containerElement.style.setProperty('--bg-opacity', this.backgroundOpacity);
-            containerElement.classList.add('has-bg');
-            console.log('[LineVisualizer] Background image configured:', this.backgroundImage, 'opacity:', this.backgroundOpacity);
-        }
-    }
-    draw(ctx, canvas, analyser, dataArray, activeConversation, lastSdkBins) {
-        if (!ctx || !canvas) return;
-        const w = canvas.clientWidth;
-        const h = canvas.clientHeight;
-        ctx.clearRect(0, 0, w, h);
-        ctx.beginPath();
-        ctx.lineWidth = this.lineWidth;
-        ctx.strokeStyle = this.color;
-        ctx.shadowColor = this.color;
-        ctx.shadowBlur = this.shadowBlur;
-        const midY = Math.floor(h / 2);
-        let rms = 0;
-        if (analyser && dataArray) {
-            analyser.getByteTimeDomainData(dataArray);
-            // Remove DC offset to keep center exactly at midY
-            let mean = 0;
-            for(let i = 0; i < dataArray.length; i++)mean += dataArray[i];
-            mean /= dataArray.length; // around 128, but measured live
-            const step = w / dataArray.length;
-            let sum = 0;
-            for(let i = 0; i < dataArray.length; i++){
-                const centered = (dataArray[i] - mean) / 128; // now ~-1..1 around 0
-                const x = i * step;
-                const y = midY + centered * (h * 0.22);
-                if (i === 0) ctx.moveTo(x, y);
-                else ctx.lineTo(x, y);
-                sum += centered * centered;
-            }
-            rms = Math.sqrt(sum / dataArray.length);
-        } else if (activeConversation?.getOutputByteFrequencyData) {
-            try {
-                const res = activeConversation.getOutputByteFrequencyData();
-                if (res && typeof res.then === 'function') res.then((bins)=>{
-                    lastSdkBins = bins;
-                }).catch(()=>{});
-                else if (res instanceof Uint8Array) lastSdkBins = res;
-            } catch  {}
-            const bins = lastSdkBins;
-            const len = bins?.length || 0;
-            if (len > 0) {
-                // Center bins by subtracting their average so graph oscillates equally
-                let avg = 0;
-                for(let i = 0; i < len; i++)avg += bins[i];
-                avg /= len || 1;
-                const step = w / len;
-                let sum = 0;
-                for(let i = 0; i < len; i++){
-                    const centered = (bins[i] - avg) / 255; // roughly -0.5..0.5
-                    const x = i * step;
-                    const y = midY + centered * 2 * (h * 0.22); // scale to ~-1..1
-                    if (i === 0) ctx.moveTo(x, y);
-                    else ctx.lineTo(x, y);
-                    sum += centered * centered;
-                }
-                rms = Math.sqrt(sum / len) / 1.1; // rough normalization
-            }
-        }
-        ctx.stroke();
-        return {
-            rms
-        };
-    }
-    drawIdle(ctx, canvas, tSec) {
-        if (!ctx || !canvas) return;
-        const w = canvas.clientWidth;
-        const h = canvas.clientHeight;
-        ctx.clearRect(0, 0, w, h);
-        const cx = w / 2;
-        const cy = h / 2;
-        const base = Math.min(w, h) * 0.12;
-        const r = base * (1 + 0.06 * Math.sin(tSec * 2 * Math.PI * 0.9));
-        ctx.shadowColor = this.color;
-        ctx.shadowBlur = 20;
-        ctx.strokeStyle = this.color;
-        ctx.lineWidth = this.lineWidth;
-        ctx.beginPath();
-        ctx.arc(cx, cy, r, 0, Math.PI * 2);
-        ctx.stroke();
-    }
-}
-
-},{"@parcel/transformer-js/src/esmodule-helpers.js":"jnFvT"}],"jnFvT":[function(require,module,exports,__globalThis) {
-exports.interopDefault = function(a) {
-    return a && a.__esModule ? a : {
-        default: a
-    };
-};
-exports.defineInteropFlag = function(a) {
-    Object.defineProperty(a, '__esModule', {
-        value: true
-    });
-};
-exports.exportAll = function(source, dest) {
-    Object.keys(source).forEach(function(key) {
-        if (key === 'default' || key === '__esModule' || Object.prototype.hasOwnProperty.call(dest, key)) return;
-        Object.defineProperty(dest, key, {
-            enumerable: true,
-            get: function() {
-                return source[key];
-            }
-        });
-    });
-    return dest;
-};
-exports.export = function(dest, destName, get) {
-    Object.defineProperty(dest, destName, {
-        enumerable: true,
-        get: get
-    });
-};
-
-},{}],"hCeB2":[function(require,module,exports,__globalThis) {
-// Image visualization mode
-var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
-parcelHelpers.defineInteropFlag(exports);
-parcelHelpers.export(exports, "ImageVisualizer", ()=>ImageVisualizer);
-class ImageVisualizer {
-    constructor(config = {}){
-        console.log('[ImageVisualizer] Constructor called with config:', config);
-        this.mode = 'image';
-        this.interval = config.interval || 200; // ms between frames
-        this.talkImages = config.talk_images || [];
-        this.idleImages = config.idle_images || [];
-        this.backgroundColor = config.backgroundColor || '#000000';
-        console.log('[ImageVisualizer] Talk images:', this.talkImages);
-        console.log('[ImageVisualizer] Idle images:', this.idleImages);
-        // Preloaded images
-        this.talkImageElements = [];
-        this.idleImageElements = [];
-        this.imagesLoaded = false;
-        this.loadingPromise = null;
-        // Animation state
-        this.currentTalkFrame = 0;
-        this.lastFrameTime = 0;
-        this.currentIdleImage = null;
-        // Start preloading images
-        this.preloadImages();
-    }
-    setup(containerElement) {
-        // Setup background color for image visualizer
-        if (containerElement) {
-            containerElement.style.backgroundColor = this.backgroundColor;
-            console.log('[ImageVisualizer] Background color configured:', this.backgroundColor);
-            // If there's a background image class, remove it for image mode
-            containerElement.classList.remove('has-bg');
-            containerElement.style.removeProperty('--bg-image');
-        }
-    }
-    async preloadImages() {
-        if (this.loadingPromise) return this.loadingPromise;
-        this.loadingPromise = new Promise(async (resolve)=>{
-            const loadImage = (src)=>{
-                return new Promise((resolveImg, rejectImg)=>{
-                    const img = new Image();
-                    img.onload = ()=>resolveImg(img);
-                    img.onerror = ()=>{
-                        console.warn(`[ImageVisualizer] Failed to load image: ${src}`);
-                        rejectImg(new Error(`Failed to load ${src}`));
-                    };
-                    img.src = src;
-                });
-            };
-            try {
-                // Load all talk images
-                console.log('[ImageVisualizer] Preloading talk images:', this.talkImages);
-                const talkPromises = this.talkImages.map((src)=>loadImage(src).catch(()=>null));
-                this.talkImageElements = (await Promise.all(talkPromises)).filter((img)=>img !== null);
-                // Load all idle images
-                console.log('[ImageVisualizer] Preloading idle images:', this.idleImages);
-                const idlePromises = this.idleImages.map((src)=>loadImage(src).catch(()=>null));
-                this.idleImageElements = (await Promise.all(idlePromises)).filter((img)=>img !== null);
-                this.imagesLoaded = true;
-                console.log('[ImageVisualizer] All images preloaded successfully');
-                console.log(`  - Talk images: ${this.talkImageElements.length}`);
-                console.log(`  - Idle images: ${this.idleImageElements.length}`);
-                // Pick random idle image
-                if (this.idleImageElements.length > 0) this.currentIdleImage = this.idleImageElements[Math.floor(Math.random() * this.idleImageElements.length)];
-                resolve();
-            } catch (error) {
-                console.error('[ImageVisualizer] Error preloading images:', error);
-                this.imagesLoaded = true; // Mark as loaded anyway to avoid blocking
-                resolve();
-            }
-        });
-        return this.loadingPromise;
-    }
-    drawImage(ctx, canvas, img) {
-        if (!ctx || !canvas || !img) return;
-        const w = canvas.clientWidth;
-        const h = canvas.clientHeight;
-        // Clear canvas
-        ctx.clearRect(0, 0, w, h);
-        // Calculate scaling to fit image while maintaining aspect ratio
-        const imgAspect = img.width / img.height;
-        const canvasAspect = w / h;
-        let drawWidth, drawHeight, drawX, drawY;
-        if (imgAspect > canvasAspect) {
-            // Image is wider than canvas
-            drawWidth = w;
-            drawHeight = w / imgAspect;
-            drawX = 0;
-            drawY = (h - drawHeight) / 2;
-        } else {
-            // Image is taller than canvas
-            drawHeight = h;
-            drawWidth = h * imgAspect;
-            drawX = (w - drawWidth) / 2;
-            drawY = 0;
-        }
-        // Draw image centered and scaled
-        ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
-    }
-    draw(ctx, canvas, analyser, dataArray, activeConversation, lastSdkBins) {
-        if (!this.imagesLoaded || this.talkImageElements.length === 0) {
-            // Fallback: draw placeholder
-            this.drawPlaceholder(ctx, canvas, 'Loading...', '#00ff80');
-            return {
-                rms: 0
-            };
-        }
-        const now = performance.now();
-        // Check if it's time to advance frame
-        if (now - this.lastFrameTime >= this.interval) {
-            this.currentTalkFrame = (this.currentTalkFrame + 1) % this.talkImageElements.length;
-            this.lastFrameTime = now;
-        }
-        const currentImage = this.talkImageElements[this.currentTalkFrame];
-        this.drawImage(ctx, canvas, currentImage);
-        // Calculate RMS for activity detection (simplified for image mode)
-        let rms = 0.5; // Always consider "active" when speaking
-        return {
-            rms
-        };
-    }
-    drawIdle(ctx, canvas, tSec) {
-        if (!this.imagesLoaded) {
-            // Fallback: draw placeholder
-            this.drawPlaceholder(ctx, canvas, 'Loading...', '#00ff80');
-            return;
-        }
-        if (this.idleImageElements.length === 0) {
-            // No idle images, draw placeholder
-            this.drawPlaceholder(ctx, canvas, 'Idle', '#00ff80');
-            return;
-        }
-        // Draw current idle image
-        if (this.currentIdleImage) this.drawImage(ctx, canvas, this.currentIdleImage);
-    // Optionally, change idle image every N seconds
-    // For now, we keep the same random idle image
-    }
-    drawPlaceholder(ctx, canvas, text, color) {
-        if (!ctx || !canvas) return;
-        const w = canvas.clientWidth;
-        const h = canvas.clientHeight;
-        ctx.clearRect(0, 0, w, h);
-        ctx.fillStyle = color;
-        ctx.font = '24px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(text, w / 2, h / 2);
-    }
-    // Method to change idle image (can be called externally or on timer)
-    changeIdleImage() {
-        if (this.idleImageElements.length > 0) this.currentIdleImage = this.idleImageElements[Math.floor(Math.random() * this.idleImageElements.length)];
-    }
-    // Reset talk animation to first frame
-    resetTalkAnimation() {
-        this.currentTalkFrame = 0;
-        this.lastFrameTime = performance.now();
-    }
-}
-
-},{"@parcel/transformer-js/src/esmodule-helpers.js":"jnFvT"}],"2WmgR":[function(require,module,exports,__globalThis) {
+},{"@elevenlabs/client":"2WmgR","./visualizer.js":"huxr5","./subtitle.js":"KX46x"}],"2WmgR":[function(require,module,exports,__globalThis) {
 var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
 parcelHelpers.defineInteropFlag(exports);
 parcelHelpers.export(exports, "Conversation", ()=>q);
-parcelHelpers.export(exports, "Input", ()=>x);
-parcelHelpers.export(exports, "Output", ()=>j);
+parcelHelpers.export(exports, "Input", ()=>T);
+parcelHelpers.export(exports, "Output", ()=>R);
 parcelHelpers.export(exports, "TextConversation", ()=>F);
-parcelHelpers.export(exports, "VoiceConversation", ()=>R);
+parcelHelpers.export(exports, "VoiceConversation", ()=>O);
 parcelHelpers.export(exports, "WebRTCConnection", ()=>S);
 parcelHelpers.export(exports, "WebSocketConnection", ()=>g);
 parcelHelpers.export(exports, "createConnection", ()=>M);
@@ -1655,6 +1125,18 @@ var c = new Uint8Array(0), l = /*#__PURE__*/ function() {
                             type: "pong",
                             event_id: e.ping_event.event_id
                         }), Promise.resolve();
+                    case "mcp_tool_call":
+                        return r.handleMCPToolCall(e), Promise.resolve();
+                    case "mcp_connection_status":
+                        return r.handleMCPConnectionStatus(e), Promise.resolve();
+                    case "agent_tool_response":
+                        return r.handleAgentToolResponse(e), Promise.resolve();
+                    case "conversation_initiation_metadata":
+                        return r.handleConversationMetadata(e), Promise.resolve();
+                    case "asr_initiation_metadata":
+                        return r.handleAsrInitiationMetadata(e), Promise.resolve();
+                    case "agent_chat_response_part":
+                        return r.handleAgentChatResponsePart(e), Promise.resolve();
                     default:
                         return r.options.onDebug && r.options.onDebug(e), Promise.resolve();
                 }
@@ -1680,7 +1162,8 @@ var c = new Uint8Array(0), l = /*#__PURE__*/ function() {
             onAudio: function() {},
             onModeChange: function() {},
             onStatusChange: function() {},
-            onCanSendFeedbackChange: function() {}
+            onCanSendFeedbackChange: function() {},
+            onInterruption: function() {}
         }, e);
     };
     var n = e.prototype;
@@ -1708,7 +1191,9 @@ var c = new Uint8Array(0), l = /*#__PURE__*/ function() {
             canSendFeedback: e
         }));
     }, n.handleInterruption = function(e) {
-        e.interruption_event && (this.lastInterruptTimestamp = e.interruption_event.event_id);
+        e.interruption_event && (this.lastInterruptTimestamp = e.interruption_event.event_id, this.options.onInterruption && this.options.onInterruption({
+            event_id: e.interruption_event.event_id
+        }));
     }, n.handleAgentResponse = function(e) {
         this.options.onMessage && this.options.onMessage({
             source: "ai",
@@ -1769,7 +1254,19 @@ var c = new Uint8Array(0), l = /*#__PURE__*/ function() {
         } catch (e) {
             return Promise.reject(e);
         }
-    }, n.handleAudio = function(e) {}, n.onError = function(e, n) {
+    }, n.handleAudio = function(e) {}, n.handleMCPToolCall = function(e) {
+        this.options.onMCPToolCall && this.options.onMCPToolCall(e.mcp_tool_call);
+    }, n.handleMCPConnectionStatus = function(e) {
+        this.options.onMCPConnectionStatus && this.options.onMCPConnectionStatus(e.mcp_connection_status);
+    }, n.handleAgentToolResponse = function(e) {
+        this.options.onAgentToolResponse && this.options.onAgentToolResponse(e.agent_tool_response);
+    }, n.handleConversationMetadata = function(e) {
+        this.options.onConversationMetadata && this.options.onConversationMetadata(e.conversation_initiation_metadata_event);
+    }, n.handleAsrInitiationMetadata = function(e) {
+        this.options.onAsrInitiationMetadata && this.options.onAsrInitiationMetadata(e.asr_initiation_metadata_event);
+    }, n.handleAgentChatResponsePart = function(e) {
+        this.options.onAgentChatResponsePart && this.options.onAgentChatResponsePart(e.text_response_part);
+    }, n.onError = function(e, n) {
         console.error(e, n), this.options.onError && this.options.onError(e, n);
     }, n.getId = function() {
         return this.connection.conversationId;
@@ -1856,8 +1353,8 @@ function h(e) {
         sampleRate: r
     };
 }
-var f = "0.6.2";
-function p(e) {
+var p = "0.8.0";
+function f(e) {
     return !!e.type;
 }
 var v = "conversation_initiation_client_data";
@@ -1905,7 +1402,7 @@ var g = /*#__PURE__*/ function(e) {
         }), i.socket.addEventListener("message", function(e) {
             try {
                 var n = JSON.parse(e.data);
-                if (!p(n)) return void i.debug({
+                if (!f(n)) return void i.debug({
                     type: "invalid_event",
                     message: "Received invalid socket event",
                     data: e.data
@@ -1927,7 +1424,7 @@ var g = /*#__PURE__*/ function(e) {
             return Promise.resolve(function(o, r) {
                 try {
                     var i = function() {
-                        var o, r, i, a, s = null != (o = e.origin) ? o : "wss://api.elevenlabs.io", u = (null == (r = e.overrides) || null == (r = r.client) ? void 0 : r.version) || f, c = (null == (i = e.overrides) || null == (i = i.client) ? void 0 : i.source) || "js_sdk";
+                        var o, r, i, a, s = null != (o = e.origin) ? o : "wss://api.elevenlabs.io", u = (null == (r = e.overrides) || null == (r = r.client) ? void 0 : r.version) || p, c = (null == (i = e.overrides) || null == (i = i.client) ? void 0 : i.source) || "js_sdk";
                         if (e.signedUrl) {
                             var l = e.signedUrl.includes("?") ? "&" : "?";
                             a = "" + e.signedUrl + l + "source=" + c + "&version=" + u;
@@ -1947,7 +1444,7 @@ var g = /*#__PURE__*/ function(e) {
                                 }, 0);
                             }), t.addEventListener("close", o), t.addEventListener("message", function(e) {
                                 var t = JSON.parse(e.data);
-                                p(t) && ("conversation_initiation_metadata" === t.type ? n(t.conversation_initiation_metadata_event) : console.warn("First received message is not conversation metadata."));
+                                f(t) && ("conversation_initiation_metadata" === t.type ? n(t.conversation_initiation_metadata_event) : console.warn("First received message is not conversation metadata."));
                             }, {
                                 once: !0
                             });
@@ -1989,7 +1486,7 @@ function P(e) {
     for(var n = window.atob(e), t = n.length, o = new Uint8Array(t), r = 0; r < t; r++)o[r] = n.charCodeAt(r);
     return o.buffer;
 }
-function b(e, n) {
+function _(e, n) {
     try {
         var t = e();
     } catch (e) {
@@ -1997,39 +1494,53 @@ function b(e, n) {
     }
     return t && t.then ? t.then(void 0, n) : t;
 }
-var k = new Map;
-function w(e, n) {
-    return function(t) {
+var w = new Map;
+function b(e, n) {
+    return function(t, o) {
         try {
-            var o, r = function(r) {
-                return o ? r : b(function() {
-                    var o = "data:application/javascript;base64," + btoa(n);
-                    return Promise.resolve(t.addModule(o)).then(function() {
-                        k.set(e, o);
+            var r, i = function(o) {
+                var i;
+                if (r) return o;
+                function a(o) {
+                    return i ? o : _(function() {
+                        var o = "data:application/javascript;base64," + btoa(n);
+                        return Promise.resolve(t.addModule(o)).then(function() {
+                            w.set(e, o);
+                        });
+                    }, function() {
+                        throw new Error("Failed to load the " + e + " worklet module. Make sure the browser supports AudioWorklets. If you are using a strict CSP, you may need to self-host the worklet files.");
+                    });
+                }
+                var s = new Blob([
+                    n
+                ], {
+                    type: "application/javascript"
+                }), u = URL.createObjectURL(s), c = _(function() {
+                    return Promise.resolve(t.addModule(u)).then(function() {
+                        w.set(e, u), i = 1;
                     });
                 }, function() {
-                    throw new Error("Failed to load the " + e + " worklet module. Make sure the browser supports AudioWorklets.");
+                    URL.revokeObjectURL(u);
                 });
-            }, i = k.get(e);
-            if (i) return Promise.resolve(t.addModule(i));
-            var a = new Blob([
-                n
-            ], {
-                type: "application/javascript"
-            }), s = URL.createObjectURL(a), u = b(function() {
-                return Promise.resolve(t.addModule(s)).then(function() {
-                    k.set(e, s), o = 1;
+                return c && c.then ? c.then(a) : a(c);
+            }, a = w.get(e);
+            if (a) return Promise.resolve(t.addModule(a));
+            var s = function() {
+                if (o) return _(function() {
+                    return Promise.resolve(t.addModule(o)).then(function() {
+                        w.set(e, o), r = 1;
+                    });
+                }, function(n) {
+                    throw new Error("Failed to load the " + e + " worklet module from path: " + o + ". Error: " + n);
                 });
-            }, function() {
-                URL.revokeObjectURL(s);
-            });
-            return Promise.resolve(u && u.then ? u.then(r) : r(u));
+            }();
+            return Promise.resolve(s && s.then ? s.then(i) : i(s));
         } catch (e) {
             return Promise.reject(e);
         }
     };
 }
-var _ = w("raw-audio-processor", '\nconst BIAS = 0x84;\nconst CLIP = 32635;\nconst encodeTable = [\n  0,0,1,1,2,2,2,2,3,3,3,3,3,3,3,3,\n  4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,\n  5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,\n  5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,\n  6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,\n  6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,\n  6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,\n  6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,\n  7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,\n  7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,\n  7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,\n  7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,\n  7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,\n  7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,\n  7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,\n  7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7\n];\n\nfunction encodeSample(sample) {\n  let sign;\n  let exponent;\n  let mantissa;\n  let muLawSample;\n  sign = (sample >> 8) & 0x80;\n  if (sign !== 0) sample = -sample;\n  sample = sample + BIAS;\n  if (sample > CLIP) sample = CLIP;\n  exponent = encodeTable[(sample>>7) & 0xFF];\n  mantissa = (sample >> (exponent+3)) & 0x0F;\n  muLawSample = ~(sign | (exponent << 4) | mantissa);\n  \n  return muLawSample;\n}\n\nclass RawAudioProcessor extends AudioWorkletProcessor {\n  constructor() {\n    super();\n              \n    this.port.onmessage = ({ data }) => {\n      switch (data.type) {\n        case "setFormat":\n          this.isMuted = false;\n          this.buffer = []; // Initialize an empty buffer\n          this.bufferSize = data.sampleRate / 4;\n          this.format = data.format;\n\n          if (globalThis.LibSampleRate && sampleRate !== data.sampleRate) {\n            globalThis.LibSampleRate.create(1, sampleRate, data.sampleRate).then(resampler => {\n              this.resampler = resampler;\n            });\n          }\n          break;\n        case "setMuted":\n          this.isMuted = data.isMuted;\n          break;\n      }\n    };\n  }\n  process(inputs) {\n    if (!this.buffer) {\n      return true;\n    }\n    \n    const input = inputs[0]; // Get the first input node\n    if (input.length > 0) {\n      let channelData = input[0]; // Get the first channel\'s data\n\n      // Resample the audio if necessary\n      if (this.resampler) {\n        channelData = this.resampler.full(channelData);\n      }\n\n      // Add channel data to the buffer\n      this.buffer.push(...channelData);\n      // Get max volume \n      let sum = 0.0;\n      for (let i = 0; i < channelData.length; i++) {\n        sum += channelData[i] * channelData[i];\n      }\n      const maxVolume = Math.sqrt(sum / channelData.length);\n      // Check if buffer size has reached or exceeded the threshold\n      if (this.buffer.length >= this.bufferSize) {\n        const float32Array = this.isMuted \n          ? new Float32Array(this.buffer.length)\n          : new Float32Array(this.buffer);\n\n        let encodedArray = this.format === "ulaw"\n          ? new Uint8Array(float32Array.length)\n          : new Int16Array(float32Array.length);\n\n        // Iterate through the Float32Array and convert each sample to PCM16\n        for (let i = 0; i < float32Array.length; i++) {\n          // Clamp the value to the range [-1, 1]\n          let sample = Math.max(-1, Math.min(1, float32Array[i]));\n\n          // Scale the sample to the range [-32768, 32767]\n          let value = sample < 0 ? sample * 32768 : sample * 32767;\n          if (this.format === "ulaw") {\n            value = encodeSample(Math.round(value));\n          }\n\n          encodedArray[i] = value;\n        }\n\n        // Send the buffered data to the main script\n        this.port.postMessage([encodedArray, maxVolume]);\n\n        // Clear the buffer after sending\n        this.buffer = [];\n      }\n    }\n    return true; // Continue processing\n  }\n}\nregisterProcessor("raw-audio-processor", RawAudioProcessor);\n');
+var k = b("rawAudioProcessor", '/*\n * ulaw encoding logic taken from the wavefile library\n * https://github.com/rochars/wavefile/blob/master/lib/codecs/mulaw.js\n * USED BY @elevenlabs/client\n */\n\nconst BIAS = 0x84;\nconst CLIP = 32635;\nconst encodeTable = [\n  0,0,1,1,2,2,2,2,3,3,3,3,3,3,3,3,\n  4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,\n  5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,\n  5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,\n  6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,\n  6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,\n  6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,\n  6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,\n  7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,\n  7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,\n  7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,\n  7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,\n  7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,\n  7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,\n  7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,\n  7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7\n];\n\nfunction encodeSample(sample) {\n  let sign;\n  let exponent;\n  let mantissa;\n  let muLawSample;\n  sign = (sample >> 8) & 0x80;\n  if (sign !== 0) sample = -sample;\n  sample = sample + BIAS;\n  if (sample > CLIP) sample = CLIP;\n  exponent = encodeTable[(sample>>7) & 0xFF];\n  mantissa = (sample >> (exponent+3)) & 0x0F;\n  muLawSample = ~(sign | (exponent << 4) | mantissa);\n  \n  return muLawSample;\n}\n\nclass RawAudioProcessor extends AudioWorkletProcessor {\n  constructor() {\n    super();\n              \n    this.port.onmessage = ({ data }) => {\n      switch (data.type) {\n        case "setFormat":\n          this.isMuted = false;\n          this.buffer = []; // Initialize an empty buffer\n          this.bufferSize = data.sampleRate / 4;\n          this.format = data.format;\n\n          if (globalThis.LibSampleRate && sampleRate !== data.sampleRate) {\n            globalThis.LibSampleRate.create(1, sampleRate, data.sampleRate).then(resampler => {\n              this.resampler = resampler;\n            });\n          }\n          break;\n        case "setMuted":\n          this.isMuted = data.isMuted;\n          break;\n      }\n    };\n  }\n  process(inputs) {\n    if (!this.buffer) {\n      return true;\n    }\n    \n    const input = inputs[0]; // Get the first input node\n    if (input.length > 0) {\n      let channelData = input[0]; // Get the first channel\'s data\n\n      // Resample the audio if necessary\n      if (this.resampler) {\n        channelData = this.resampler.full(channelData);\n      }\n\n      // Add channel data to the buffer\n      this.buffer.push(...channelData);\n      // Get max volume \n      let sum = 0.0;\n      for (let i = 0; i < channelData.length; i++) {\n        sum += channelData[i] * channelData[i];\n      }\n      const maxVolume = Math.sqrt(sum / channelData.length);\n      // Check if buffer size has reached or exceeded the threshold\n      if (this.buffer.length >= this.bufferSize) {\n        const float32Array = this.isMuted \n          ? new Float32Array(this.buffer.length)\n          : new Float32Array(this.buffer);\n\n        let encodedArray = this.format === "ulaw"\n          ? new Uint8Array(float32Array.length)\n          : new Int16Array(float32Array.length);\n\n        // Iterate through the Float32Array and convert each sample to PCM16\n        for (let i = 0; i < float32Array.length; i++) {\n          // Clamp the value to the range [-1, 1]\n          let sample = Math.max(-1, Math.min(1, float32Array[i]));\n\n          // Scale the sample to the range [-32768, 32767]\n          let value = sample < 0 ? sample * 32768 : sample * 32767;\n          if (this.format === "ulaw") {\n            value = encodeSample(Math.round(value));\n          }\n\n          encodedArray[i] = value;\n        }\n\n        // Send the buffered data to the main script\n        this.port.postMessage([encodedArray, maxVolume]);\n\n        // Clear the buffer after sending\n        this.buffer = [];\n      }\n    }\n    return true; // Continue processing\n  }\n}\nregisterProcessor("rawAudioProcessor", RawAudioProcessor);\n');
 function C(e, n) {
     try {
         var t = e();
@@ -2079,7 +1590,7 @@ var S = /*#__PURE__*/ function(i) {
             }, i = function() {
                 if (!("conversationToken" in t) || !t.conversationToken) return function() {
                     if ("agentId" in t && t.agentId) return C(function() {
-                        var e, n, r, i = (null == (e = t.overrides) || null == (e = e.client) ? void 0 : e.version) || f, a = (null == (n = t.overrides) || null == (n = n.client) ? void 0 : n.source) || "js_sdk", s = function(e) {
+                        var e, n, r, i = (null == (e = t.overrides) || null == (e = e.client) ? void 0 : e.version) || p, a = (null == (n = t.overrides) || null == (n = n.client) ? void 0 : n.source) || "js_sdk", s = function(e) {
                             return e.replace(/^wss:\/\//, "https://");
                         }(null != (r = t.origin) ? r : "https://api.elevenlabs.io");
                         return Promise.resolve(fetch(s + "/v1/convai/conversation/token?agent_id=" + t.agentId + "&source=" + a + "&version=" + i)).then(function(e) {
@@ -2127,7 +1638,7 @@ var S = /*#__PURE__*/ function(i) {
             try {
                 var o = JSON.parse((new TextDecoder).decode(n));
                 if ("audio" === o.type) return;
-                p(o) ? e.handleMessage(o) : console.warn("Invalid socket event received:", o);
+                f(o) ? e.handleMessage(o) : console.warn("Invalid socket event received:", o);
             } catch (e) {
                 console.warn("Failed to parse incoming data message:", e), console.warn("Raw payload:", (new TextDecoder).decode(n));
             }
@@ -2227,8 +1738,8 @@ var S = /*#__PURE__*/ function(i) {
                 var o = new MediaStream([
                     e.mediaStreamTrack
                 ]), r = t.createMediaStreamSource(o);
-                return r.connect(n.outputAnalyser), Promise.resolve(_(t.audioWorklet)).then(function() {
-                    var e = new AudioWorkletNode(t, "raw-audio-processor");
+                return r.connect(n.outputAnalyser), Promise.resolve(k(t.audioWorklet)).then(function() {
+                    var e = new AudioWorkletNode(t, "rawAudioProcessor");
                     n.outputAnalyser.connect(e), e.port.postMessage({
                         type: "setFormat",
                         format: n.outputFormat.format,
@@ -2413,7 +1924,7 @@ var D = function(e) {
         }
     }, n;
 }(l);
-function E(e, n) {
+function A(e, n) {
     try {
         var t = e();
     } catch (e) {
@@ -2421,57 +1932,57 @@ function E(e, n) {
     }
     return t && t.then ? t.then(void 0, n) : t;
 }
-var A = {
+var E = {
     echoCancellation: !0,
     noiseSuppression: !0,
     autoGainControl: !0,
     channelCount: {
         ideal: 1
     }
-}, x = /*#__PURE__*/ function() {
+}, T = /*#__PURE__*/ function() {
     function e(e, n, t, o, r) {
         this.context = void 0, this.analyser = void 0, this.worklet = void 0, this.inputStream = void 0, this.mediaStreamSource = void 0, this.context = e, this.analyser = n, this.worklet = t, this.inputStream = o, this.mediaStreamSource = r;
     }
     e.create = function(n) {
-        var t = n.sampleRate, o = n.format, r = n.preferHeadphonesForIosDevices, a = n.inputDeviceId;
+        var t = n.sampleRate, o = n.format, r = n.preferHeadphonesForIosDevices, a = n.inputDeviceId, s = n.workletPaths, u = n.libsampleratePath;
         try {
-            var s = null, u = null;
-            return Promise.resolve(E(function() {
+            var c = null, l = null;
+            return Promise.resolve(A(function() {
                 function n() {
                     function n() {
-                        return Promise.resolve(_(s.audioWorklet)).then(function() {
+                        return Promise.resolve(k(c.audioWorklet, null == s ? void 0 : s.rawAudioProcessor)).then(function() {
                             var n = i({
                                 voiceIsolation: !0
-                            }, c);
+                            }, d);
                             return Promise.resolve(navigator.mediaDevices.getUserMedia({
                                 audio: n
                             })).then(function(n) {
-                                var r = s.createMediaStreamSource(u = n), i = new AudioWorkletNode(s, "raw-audio-processor");
+                                var r = c.createMediaStreamSource(l = n), i = new AudioWorkletNode(c, "rawAudioProcessor");
                                 return i.port.postMessage({
                                     type: "setFormat",
                                     format: o,
                                     sampleRate: t
-                                }), r.connect(l), l.connect(i), Promise.resolve(s.resume()).then(function() {
-                                    return new e(s, l, i, u, r);
+                                }), r.connect(h), h.connect(i), Promise.resolve(c.resume()).then(function() {
+                                    return new e(c, h, i, l, r);
                                 });
                             });
                         });
                     }
-                    a && (c.deviceId = {
+                    a && (d.deviceId = {
                         exact: a
                     });
-                    var r = navigator.mediaDevices.getSupportedConstraints().sampleRate, l = (s = new window.AudioContext(r ? {
+                    var r = navigator.mediaDevices.getSupportedConstraints().sampleRate, h = (c = new window.AudioContext(r ? {
                         sampleRate: t
-                    } : {})).createAnalyser(), d = function() {
-                        if (!r) return Promise.resolve(s.audioWorklet.addModule("https://cdn.jsdelivr.net/npm/@alexanderolsen/libsamplerate-js@2.1.2/dist/libsamplerate.worklet.js")).then(function() {});
+                    } : {})).createAnalyser(), p = function() {
+                        if (!r) return Promise.resolve(c.audioWorklet.addModule(u || "https://cdn.jsdelivr.net/npm/@alexanderolsen/libsamplerate-js@2.1.2/dist/libsamplerate.worklet.js")).then(function() {});
                     }();
-                    return d && d.then ? d.then(n) : n();
+                    return p && p.then ? p.then(n) : n();
                 }
-                var c = i({
+                var d = i({
                     sampleRate: {
                         ideal: t
                     }
-                }, A), l = function() {
+                }, E), h = function() {
                     if (I() && r) return Promise.resolve(window.navigator.mediaDevices.enumerateDevices()).then(function(e) {
                         var n = e.find(function(e) {
                             return "audioinput" === e.kind && [
@@ -2482,17 +1993,17 @@ var A = {
                                 return e.label.toLowerCase().includes(n);
                             });
                         });
-                        n && (c.deviceId = {
+                        n && (d.deviceId = {
                             ideal: n.deviceId
                         });
                     });
                 }();
-                return l && l.then ? l.then(n) : n();
+                return h && h.then ? h.then(n) : n();
             }, function(e) {
                 var n, t;
-                throw null == (n = u) || n.getTracks().forEach(function(e) {
+                throw null == (n = l) || n.getTracks().forEach(function(e) {
                     e.stop();
-                }), null == (t = s) || t.close(), e;
+                }), null == (t = c) || t.close(), e;
             }));
         } catch (e) {
             return Promise.reject(e);
@@ -2516,13 +2027,12 @@ var A = {
     }, n.setInputDevice = function(e) {
         try {
             var n = this;
-            if (!e) throw new Error("Input device ID is required");
-            return Promise.resolve(E(function() {
-                var t = i({
-                    deviceId: {
-                        exact: e
-                    }
-                }, A), o = i({
+            return Promise.resolve(A(function() {
+                var t = i({}, E);
+                e && (t.deviceId = {
+                    exact: e
+                });
+                var o = i({
                     voiceIsolation: !0
                 }, t);
                 return Promise.resolve(navigator.mediaDevices.getUserMedia({
@@ -2539,50 +2049,50 @@ var A = {
             return Promise.reject(e);
         }
     }, e;
-}(), T = w("audio-concat-processor", '\nconst decodeTable = [0,132,396,924,1980,4092,8316,16764];\n\nexport function decodeSample(muLawSample) {\n  let sign;\n  let exponent;\n  let mantissa;\n  let sample;\n  muLawSample = ~muLawSample;\n  sign = (muLawSample & 0x80);\n  exponent = (muLawSample >> 4) & 0x07;\n  mantissa = muLawSample & 0x0F;\n  sample = decodeTable[exponent] + (mantissa << (exponent+3));\n  if (sign !== 0) sample = -sample;\n\n  return sample;\n}\n\nclass AudioConcatProcessor extends AudioWorkletProcessor {\n  constructor() {\n    super();\n    this.buffers = []; // Initialize an empty buffer\n    this.cursor = 0;\n    this.currentBuffer = null;\n    this.wasInterrupted = false;\n    this.finished = false;\n    \n    this.port.onmessage = ({ data }) => {\n      switch (data.type) {\n        case "setFormat":\n          this.format = data.format;\n          break;\n        case "buffer":\n          this.wasInterrupted = false;\n          this.buffers.push(\n            this.format === "ulaw"\n              ? new Uint8Array(data.buffer)\n              : new Int16Array(data.buffer)\n          );\n          break;\n        case "interrupt":\n          this.wasInterrupted = true;\n          break;\n        case "clearInterrupted":\n          if (this.wasInterrupted) {\n            this.wasInterrupted = false;\n            this.buffers = [];\n            this.currentBuffer = null;\n          }\n      }\n    };\n  }\n  process(_, outputs) {\n    let finished = false;\n    const output = outputs[0][0];\n    for (let i = 0; i < output.length; i++) {\n      if (!this.currentBuffer) {\n        if (this.buffers.length === 0) {\n          finished = true;\n          break;\n        }\n        this.currentBuffer = this.buffers.shift();\n        this.cursor = 0;\n      }\n\n      let value = this.currentBuffer[this.cursor];\n      if (this.format === "ulaw") {\n        value = decodeSample(value);\n      }\n      output[i] = value / 32768;\n      this.cursor++;\n\n      if (this.cursor >= this.currentBuffer.length) {\n        this.currentBuffer = null;\n      }\n    }\n\n    if (this.finished !== finished) {\n      this.finished = finished;\n      this.port.postMessage({ type: "process", finished });\n    }\n\n    return true; // Continue processing\n  }\n}\n\nregisterProcessor("audio-concat-processor", AudioConcatProcessor);\n'), j = /*#__PURE__*/ function() {
+}(), x = b("audioConcatProcessor", '/*\n * ulaw decoding logic taken from the wavefile library\n * https://github.com/rochars/wavefile/blob/master/lib/codecs/mulaw.js\n * USED BY @elevenlabs/client\n */\n\nconst decodeTable = [0,132,396,924,1980,4092,8316,16764];\n\nfunction decodeSample(muLawSample) {\n  let sign;\n  let exponent;\n  let mantissa;\n  let sample;\n  muLawSample = ~muLawSample;\n  sign = (muLawSample & 0x80);\n  exponent = (muLawSample >> 4) & 0x07;\n  mantissa = muLawSample & 0x0F;\n  sample = decodeTable[exponent] + (mantissa << (exponent+3));\n  if (sign !== 0) sample = -sample;\n\n  return sample;\n}\n\nclass AudioConcatProcessor extends AudioWorkletProcessor {\n  constructor() {\n    super();\n    this.buffers = []; // Initialize an empty buffer\n    this.cursor = 0;\n    this.currentBuffer = null;\n    this.wasInterrupted = false;\n    this.finished = false;\n    \n    this.port.onmessage = ({ data }) => {\n      switch (data.type) {\n        case "setFormat":\n          this.format = data.format;\n          break;\n        case "buffer":\n          this.wasInterrupted = false;\n          this.buffers.push(\n            this.format === "ulaw"\n              ? new Uint8Array(data.buffer)\n              : new Int16Array(data.buffer)\n          );\n          break;\n        case "interrupt":\n          this.wasInterrupted = true;\n          break;\n        case "clearInterrupted":\n          if (this.wasInterrupted) {\n            this.wasInterrupted = false;\n            this.buffers = [];\n            this.currentBuffer = null;\n          }\n      }\n    };\n  }\n  process(_, outputs) {\n    let finished = false;\n    const output = outputs[0][0];\n    for (let i = 0; i < output.length; i++) {\n      if (!this.currentBuffer) {\n        if (this.buffers.length === 0) {\n          finished = true;\n          break;\n        }\n        this.currentBuffer = this.buffers.shift();\n        this.cursor = 0;\n      }\n\n      let value = this.currentBuffer[this.cursor];\n      if (this.format === "ulaw") {\n        value = decodeSample(value);\n      }\n      output[i] = value / 32768;\n      this.cursor++;\n\n      if (this.cursor >= this.currentBuffer.length) {\n        this.currentBuffer = null;\n      }\n    }\n\n    if (this.finished !== finished) {\n      this.finished = finished;\n      this.port.postMessage({ type: "process", finished });\n    }\n\n    return true; // Continue processing\n  }\n}\n\nregisterProcessor("audioConcatProcessor", AudioConcatProcessor);\n'), R = /*#__PURE__*/ function() {
     function e(e, n, t, o, r) {
         this.context = void 0, this.analyser = void 0, this.gain = void 0, this.worklet = void 0, this.audioElement = void 0, this.context = e, this.analyser = n, this.gain = t, this.worklet = o, this.audioElement = r;
     }
     e.create = function(n) {
-        var t = n.sampleRate, o = n.format, r = n.outputDeviceId;
+        var t = n.sampleRate, o = n.format, r = n.outputDeviceId, i = n.workletPaths;
         try {
-            var i = null, a = null;
-            return Promise.resolve(function(n, s) {
+            var a = null, s = null;
+            return Promise.resolve(function(n, u) {
                 try {
-                    var u = function() {
-                        var n = (i = new AudioContext({
+                    var c = function() {
+                        var n = (a = new AudioContext({
                             sampleRate: t
-                        })).createAnalyser(), s = i.createGain();
-                        (a = new Audio).src = "", a.load(), a.autoplay = !0, a.style.display = "none", document.body.appendChild(a);
-                        var u = i.createMediaStreamDestination();
-                        return a.srcObject = u.stream, s.connect(n), n.connect(u), Promise.resolve(T(i.audioWorklet)).then(function() {
-                            var t = new AudioWorkletNode(i, "audio-concat-processor");
+                        })).createAnalyser(), u = a.createGain();
+                        (s = new Audio).src = "", s.load(), s.autoplay = !0, s.style.display = "none", document.body.appendChild(s);
+                        var c = a.createMediaStreamDestination();
+                        return s.srcObject = c.stream, u.connect(n), n.connect(c), Promise.resolve(x(a.audioWorklet, null == i ? void 0 : i.audioConcatProcessor)).then(function() {
+                            var t = new AudioWorkletNode(a, "audioConcatProcessor");
                             return t.port.postMessage({
                                 type: "setFormat",
                                 format: o
-                            }), t.connect(s), Promise.resolve(i.resume()).then(function() {
+                            }), t.connect(u), Promise.resolve(a.resume()).then(function() {
                                 function o() {
-                                    return new e(i, n, s, t, a);
+                                    return new e(a, n, u, t, s);
                                 }
-                                var u = function() {
-                                    if (r && a.setSinkId) return Promise.resolve(a.setSinkId(r)).then(function() {});
+                                var i = function() {
+                                    if (r && s.setSinkId) return Promise.resolve(s.setSinkId(r)).then(function() {});
                                 }();
-                                return u && u.then ? u.then(o) : o();
+                                return i && i.then ? i.then(o) : o();
                             });
                         });
                     }();
                 } catch (e) {
-                    return s(e);
+                    return u(e);
                 }
-                return u && u.then ? u.then(void 0, s) : u;
+                return c && c.then ? c.then(void 0, u) : c;
             }(0, function(e) {
                 var n, t;
                 function o() {
                     throw e;
                 }
-                null != (n = a) && n.parentNode && a.parentNode.removeChild(a), null == (t = a) || t.pause();
+                null != (n = s) && n.parentNode && s.parentNode.removeChild(s), null == (t = s) || t.pause();
                 var r = function() {
-                    if (i && "closed" !== i.state) return Promise.resolve(i.close()).then(function() {});
+                    if (a && "closed" !== a.state) return Promise.resolve(a.close()).then(function() {});
                 }();
                 return r && r.then ? r.then(o) : o();
             }));
@@ -2594,7 +2104,7 @@ var A = {
     return n.setOutputDevice = function(e) {
         try {
             if (!("setSinkId" in HTMLAudioElement.prototype)) throw new Error("setSinkId is not supported in this browser");
-            return Promise.resolve(this.audioElement.setSinkId(e)).then(function() {});
+            return Promise.resolve(this.audioElement.setSinkId(e || "")).then(function() {});
         } catch (e) {
             return Promise.reject(e);
         }
@@ -2607,7 +2117,7 @@ var A = {
         }
     }, e;
 }();
-function O(e, n) {
+function j(e, n) {
     try {
         var t = e();
     } catch (e) {
@@ -2615,7 +2125,7 @@ function O(e, n) {
     }
     return t && t.then ? t.then(void 0, n) : t;
 }
-var R = /*#__PURE__*/ function(e) {
+var O = /*#__PURE__*/ function(e) {
     function n(n, t, o, r, i) {
         var a;
         return (a = e.call(this, n, t) || this).input = void 0, a.output = void 0, a.wakeLock = void 0, a.inputFrequencyData = void 0, a.outputFrequencyData = void 0, a.onInputWorkletMessage = function(e) {
@@ -2652,19 +2162,22 @@ var R = /*#__PURE__*/ function(e) {
     a(n, e), n.startSession = function(e) {
         try {
             var t = function() {
-                return O(function() {
+                return j(function() {
                     return Promise.resolve(navigator.mediaDevices.getUserMedia({
                         audio: !0
                     })).then(function(t) {
                         return u = t, Promise.resolve(D(o.connectionDelay)).then(function() {
                             return Promise.resolve(M(e)).then(function(t) {
                                 return a = t, Promise.resolve(Promise.all([
-                                    x.create(i({}, a.inputFormat, {
+                                    T.create(i({}, a.inputFormat, {
                                         preferHeadphonesForIosDevices: e.preferHeadphonesForIosDevices,
-                                        inputDeviceId: e.inputDeviceId
+                                        inputDeviceId: e.inputDeviceId,
+                                        workletPaths: e.workletPaths,
+                                        libsampleratePath: e.libsampleratePath
                                     })),
-                                    j.create(i({}, a.outputFormat, {
-                                        outputDeviceId: e.outputDeviceId
+                                    R.create(i({}, a.outputFormat, {
+                                        outputDeviceId: e.outputDeviceId,
+                                        workletPaths: e.workletPaths
                                     }))
                                 ])).then(function(e) {
                                     var t;
@@ -2687,7 +2200,7 @@ var R = /*#__PURE__*/ function(e) {
                             function n() {
                                 throw e;
                             }
-                            var t = O(function() {
+                            var t = j(function() {
                                 var e;
                                 return Promise.resolve(null == (e = c) ? void 0 : e.release()).then(function() {
                                     c = null;
@@ -2705,7 +2218,7 @@ var R = /*#__PURE__*/ function(e) {
             });
             var r = null, a = null, s = null, u = null, c = null, d = function(n) {
                 if (null == (n = e.useWakeLock) || n) {
-                    var t = O(function() {
+                    var t = j(function() {
                         return Promise.resolve(navigator.wakeLock.request("screen")).then(function(e) {
                             c = e;
                         });
@@ -2728,7 +2241,7 @@ var R = /*#__PURE__*/ function(e) {
                         return Promise.resolve(n.output.close()).then(function() {});
                     });
                 }
-                var t = O(function() {
+                var t = j(function() {
                     var e;
                     return Promise.resolve(null == (e = n.wakeLock) ? void 0 : e.release()).then(function() {
                         n.wakeLock = null;
@@ -2758,41 +2271,36 @@ var R = /*#__PURE__*/ function(e) {
         var n = e.sampleRate, t = e.format, o = e.preferHeadphonesForIosDevices, r = e.inputDeviceId;
         try {
             var i, a = this;
-            return Promise.resolve(O(function() {
+            return Promise.resolve(j(function() {
                 function e(e) {
                     if (i) return e;
                     function s() {
                         return Promise.resolve(a.input.close()).then(function() {
-                            return Promise.resolve(x.create({
-                                sampleRate: n,
-                                format: t,
+                            return Promise.resolve(T.create({
+                                sampleRate: null != n ? n : a.connection.inputFormat.sampleRate,
+                                format: null != t ? t : a.connection.inputFormat.format,
                                 preferHeadphonesForIosDevices: o,
-                                inputDeviceId: r
+                                inputDeviceId: r,
+                                workletPaths: a.options.workletPaths,
+                                libsampleratePath: a.options.libsampleratePath
                             })).then(function(e) {
-                                return a.input = e, a.input;
+                                return a.input = e, a.input.worklet.port.onmessage = a.onInputWorkletMessage, a.input;
                             });
                         });
                     }
                     var u = function() {
-                        if (a.connection instanceof S) {
-                            var e = function() {
-                                if (r) return Promise.resolve(a.connection.setAudioInputDevice(r)).then(function() {});
-                            }();
-                            if (e && e.then) return e.then(function() {});
-                        }
+                        if (a.connection instanceof S) return Promise.resolve(a.connection.setAudioInputDevice(r || "")).then(function() {});
                     }();
                     return u && u.then ? u.then(s) : s();
                 }
                 var s = function() {
-                    if (a.connection instanceof g) return function() {
-                        if (r) return O(function() {
-                            return Promise.resolve(a.input.setInputDevice(r)).then(function() {
-                                return i = 1, a.input;
-                            });
-                        }, function(e) {
-                            console.warn("Failed to change device on existing input, recreating:", e);
+                    if (a.connection instanceof g) return j(function() {
+                        return Promise.resolve(a.input.setInputDevice(r)).then(function() {
+                            return i = 1, a.input;
                         });
-                    }();
+                    }, function(e) {
+                        console.warn("Failed to change device on existing input, recreating:", e);
+                    });
                 }();
                 return s && s.then ? s.then(e) : e(s);
             }, function(e) {
@@ -2805,40 +2313,34 @@ var R = /*#__PURE__*/ function(e) {
         var n = e.sampleRate, t = e.format, o = e.outputDeviceId;
         try {
             var r, i = this;
-            return Promise.resolve(O(function() {
+            return Promise.resolve(j(function() {
                 function e(e) {
                     if (r) return e;
                     function a() {
                         return Promise.resolve(i.output.close()).then(function() {
-                            return Promise.resolve(j.create({
-                                sampleRate: n,
-                                format: t,
-                                outputDeviceId: o
+                            return Promise.resolve(R.create({
+                                sampleRate: null != n ? n : i.connection.outputFormat.sampleRate,
+                                format: null != t ? t : i.connection.outputFormat.format,
+                                outputDeviceId: o,
+                                workletPaths: i.options.workletPaths
                             })).then(function(e) {
                                 return i.output = e, i.output;
                             });
                         });
                     }
                     var s = function() {
-                        if (i.connection instanceof S) {
-                            var e = function() {
-                                if (o) return Promise.resolve(i.connection.setAudioOutputDevice(o)).then(function() {});
-                            }();
-                            if (e && e.then) return e.then(function() {});
-                        }
+                        if (i.connection instanceof S) return Promise.resolve(i.connection.setAudioOutputDevice(o || "")).then(function() {});
                     }();
                     return s && s.then ? s.then(a) : a();
                 }
                 var a = function() {
-                    if (i.connection instanceof g) return function() {
-                        if (o) return O(function() {
-                            return Promise.resolve(i.output.setOutputDevice(o)).then(function() {
-                                return r = 1, i.output;
-                            });
-                        }, function(e) {
-                            console.warn("Failed to change device on existing output, recreating:", e);
+                    if (i.connection instanceof g) return j(function() {
+                        return Promise.resolve(i.output.setOutputDevice(o)).then(function() {
+                            return r = 1, i.output;
                         });
-                    }();
+                    }, function(e) {
+                        console.warn("Failed to change device on existing output, recreating:", e);
+                    });
                 }();
                 return a && a.then ? a.then(e) : e(a);
             }, function(e) {
@@ -2865,7 +2367,7 @@ var q = /*#__PURE__*/ function(e) {
         return e.apply(this, arguments) || this;
     }
     return a(n, e), n.startSession = function(e) {
-        return e.textOnly ? F.startSession(e) : R.startSession(e);
+        return e.textOnly ? F.startSession(e) : O.startSession(e);
     }, n;
 }(l);
 
@@ -28808,6 +28310,580 @@ function isFacingModeValue(item) {
     return item === undefined || allowedValues.includes(item);
 }
 
+},{"@parcel/transformer-js/src/esmodule-helpers.js":"jnFvT"}],"jnFvT":[function(require,module,exports,__globalThis) {
+exports.interopDefault = function(a) {
+    return a && a.__esModule ? a : {
+        default: a
+    };
+};
+exports.defineInteropFlag = function(a) {
+    Object.defineProperty(a, '__esModule', {
+        value: true
+    });
+};
+exports.exportAll = function(source, dest) {
+    Object.keys(source).forEach(function(key) {
+        if (key === 'default' || key === '__esModule' || Object.prototype.hasOwnProperty.call(dest, key)) return;
+        Object.defineProperty(dest, key, {
+            enumerable: true,
+            get: function() {
+                return source[key];
+            }
+        });
+    });
+    return dest;
+};
+exports.export = function(dest, destName, get) {
+    Object.defineProperty(dest, destName, {
+        enumerable: true,
+        get: get
+    });
+};
+
+},{}],"huxr5":[function(require,module,exports,__globalThis) {
+// Visualization module: canvas-based idle circle and reactive line driven by audio
+var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
+parcelHelpers.defineInteropFlag(exports);
+parcelHelpers.export(exports, "updateVisualizerMode", ()=>updateVisualizerMode);
+parcelHelpers.export(exports, "configureVisualizer", ()=>configureVisualizer);
+parcelHelpers.export(exports, "connectMediaEl", ()=>connectMediaEl);
+parcelHelpers.export(exports, "connectMediaStream", ()=>connectMediaStream);
+parcelHelpers.export(exports, "observeMediaPlayback", ()=>observeMediaPlayback);
+parcelHelpers.export(exports, "hookConversationAudio", ()=>hookConversationAudio);
+parcelHelpers.export(exports, "setActiveConversation", ()=>setActiveConversation);
+parcelHelpers.export(exports, "initFullVisualizer", ()=>initFullVisualizer);
+var _registryJs = require("./visualizers/registry.js");
+let audioCtx = null;
+let analyser = null;
+let dataArray = null;
+let rafId = null;
+let canvas = null;
+let ctx = null;
+let vizState = 'idle'; // 'idle' | 'active' (state of the visualization)
+let silentGainNode = null;
+const mediaSourceMap = new WeakMap(); // HTMLMediaElement -> MediaElementAudioSourceNode
+const streamSourceMap = new WeakMap(); // MediaStream -> MediaStreamAudioSourceNode
+const playingEls = new Set();
+let activeConversation = null;
+let lastSdkBins = null;
+// Visualizer instance (pluggable)
+let visualizerInstance = null;
+let visualizerConfig = {
+    mode: 'line',
+    color: '#00ff80'
+};
+let containerElement = null;
+// Debug helpers
+let lastActive = false;
+let silentFrames = 0;
+const ACTIVE_THRESHOLD = 0.015; // RMS threshold
+const SILENT_FRAME_LIMIT = 20; // ~0.33s at 60fps
+const ensureAudioContext = async ()=>{
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') try {
+        await audioCtx.resume();
+    } catch  {}
+};
+const updateVisualizerMode = (mode)=>{
+    if (mode !== vizState) {
+        console.log('[viz] state ->', mode);
+        vizState = mode;
+    }
+};
+const configureVisualizer = (config, container = null)=>{
+    if (config) {
+        visualizerConfig = {
+            ...visualizerConfig,
+            ...config
+        };
+        console.log('[viz] config updated:', visualizerConfig);
+        // Recreate visualizer instance with new config
+        visualizerInstance = (0, _registryJs.createVisualizer)(visualizerConfig.mode || 'line', visualizerConfig);
+        // Store container reference
+        if (container) containerElement = container;
+        // Call setup method if visualizer has one
+        if (visualizerInstance && typeof visualizerInstance.setup === 'function' && containerElement) visualizerInstance.setup(containerElement);
+    }
+};
+const buildAnalyserChain = (sourceNode)=>{
+    analyser = audioCtx && audioCtx.createAnalyser ? audioCtx.createAnalyser() : null;
+    if (!analyser) return;
+    analyser.fftSize = 2048;
+    dataArray = new Uint8Array(analyser.frequencyBinCount);
+    try {
+        sourceNode.disconnect();
+    } catch  {}
+    sourceNode.connect(analyser);
+    // Keep graph alive but silent
+    if (!silentGainNode) {
+        silentGainNode = audioCtx.createGain();
+        silentGainNode.gain.value = 0.0;
+        silentGainNode.connect(audioCtx.destination);
+    }
+    try {
+        analyser.disconnect();
+    } catch  {}
+    analyser.connect(silentGainNode);
+};
+const connectMediaEl = async (el)=>{
+    if (!(el instanceof HTMLMediaElement)) return;
+    await ensureAudioContext();
+    let source = mediaSourceMap.get(el);
+    if (!source) {
+        try {
+            source = audioCtx.createMediaElementSource(el);
+        } catch (e) {
+            console.warn('[viz] createMediaElementSource failed', e);
+        }
+        if (source) mediaSourceMap.set(el, source);
+    }
+    if (source) buildAnalyserChain(source);
+    try {
+        el.crossOrigin = 'anonymous';
+    } catch  {}
+    console.log('[viz] MediaElement connected', {
+        src: el.currentSrc || el.src
+    });
+    // Track play/pause events to control visualization
+    el.addEventListener('play', ()=>{
+        playingEls.add(el);
+        updateVisualizerMode('active');
+        console.log('[viz] element play');
+    });
+    const onStop = ()=>{
+        playingEls.delete(el);
+        if (playingEls.size === 0) updateVisualizerMode('idle');
+        console.log('[viz] element stop/pause, playing count:', playingEls.size);
+    };
+    el.addEventListener('pause', onStop);
+    el.addEventListener('ended', onStop);
+};
+const connectMediaStream = async (stream)=>{
+    if (!(stream instanceof MediaStream)) return;
+    await ensureAudioContext();
+    let source = streamSourceMap.get(stream);
+    if (!source) {
+        try {
+            source = audioCtx.createMediaStreamSource(stream);
+        } catch (e) {
+            console.warn('[viz] createMediaStreamSource failed', e);
+        }
+        if (source) streamSourceMap.set(stream, source);
+    }
+    if (source) buildAnalyserChain(source);
+    updateVisualizerMode('active');
+    console.log('[viz] MediaStream connected with tracks:', stream.getTracks().map((t)=>t.kind + ':' + t.readyState));
+    stream.getTracks().forEach((t)=>t.addEventListener('ended', ()=>{
+            if (stream.getTracks().every((tr)=>tr.readyState === 'ended')) {
+                updateVisualizerMode('idle');
+                console.log('[viz] stream ended');
+            }
+        }));
+};
+const observeMediaPlayback = ()=>{
+    const handler = async (type, target)=>{
+        if (!(target instanceof HTMLMediaElement)) return;
+        if (type === 'play') {
+            await connectMediaEl(target);
+            playingEls.add(target);
+            updateVisualizerMode('active');
+            console.log('[viz] global play', target.tagName);
+        } else {
+            playingEls.delete(target);
+            if (playingEls.size === 0) updateVisualizerMode('idle');
+            console.log('[viz] global', type, 'playing count:', playingEls.size);
+        }
+    };
+    document.addEventListener('play', (e)=>handler('play', e.target), true);
+    document.addEventListener('pause', (e)=>handler('pause', e.target), true);
+    document.addEventListener('ended', (e)=>handler('ended', e.target), true);
+};
+const hookConversationAudio = async (conv)=>{
+    try {
+        if (!conv) return;
+        // Try element
+        const el = conv.audioElement || conv.audioEl || conv.audio;
+        if (el instanceof HTMLMediaElement) {
+            await connectMediaEl(el);
+            return;
+        }
+        // Try stream
+        const stream = conv.mediaStream || conv.outputStream || conv.remoteStream || conv.stream;
+        if (stream instanceof MediaStream) {
+            await connectMediaStream(stream);
+            return;
+        }
+        // Fallback: observe DOM for media created later
+        const mo = new MutationObserver((muts)=>{
+            muts.forEach((mut)=>{
+                mut.addedNodes?.forEach((n)=>{
+                    if (n instanceof HTMLMediaElement) connectMediaEl(n);
+                    if (n.querySelectorAll) n.querySelectorAll('audio,video').forEach(connectMediaEl);
+                });
+            });
+        });
+        mo.observe(document.documentElement, {
+            childList: true,
+            subtree: true
+        });
+    } catch (e) {
+        console.warn('[viz] hookConversationAudio failed', e);
+    }
+};
+const setActiveConversation = (conv)=>{
+    activeConversation = conv;
+};
+const initCanvas = (canvasId)=>{
+    canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    ctx = canvas.getContext('2d');
+    const resize = ()=>{
+        const dpr = window.devicePixelRatio || 1;
+        const w = canvas.clientWidth || window.innerWidth;
+        const h = canvas.clientHeight || window.innerHeight;
+        canvas.width = Math.floor(w * dpr);
+        canvas.height = Math.floor(h * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+    resize();
+    window.addEventListener('resize', resize);
+};
+const drawIdle = (tSec)=>{
+    if (!visualizerInstance) return;
+    visualizerInstance.drawIdle(ctx, canvas, tSec);
+};
+const drawActive = ()=>{
+    if (!visualizerInstance) return;
+    const result = visualizerInstance.draw(ctx, canvas, analyser, dataArray, activeConversation, lastSdkBins);
+    const rms = result?.rms || 0;
+    // Debug: log when audio starts/stops
+    const isActive = rms > ACTIVE_THRESHOLD;
+    if (isActive && !lastActive) console.log('[viz] audio signal detected, rms=', rms.toFixed(3));
+    if (!isActive) {
+        silentFrames++;
+        if (lastActive && silentFrames > SILENT_FRAME_LIMIT) console.log('[viz] audio gone silent');
+    } else silentFrames = 0;
+    lastActive = isActive;
+};
+const initFullVisualizer = (canvasId = 'vizCanvas', config = null, container = null)=>{
+    // Store container reference
+    if (container) containerElement = container;
+    if (config) configureVisualizer(config, containerElement);
+    else if (!visualizerInstance) {
+        // Initialize with default config
+        visualizerInstance = (0, _registryJs.createVisualizer)(visualizerConfig.mode, visualizerConfig);
+        // Call setup if we have a container
+        if (visualizerInstance && typeof visualizerInstance.setup === 'function' && containerElement) visualizerInstance.setup(containerElement);
+    }
+    initCanvas(canvasId);
+    cancelAnimationFrame(rafId);
+    const tick = (tMs)=>{
+        const tSec = tMs / 1000;
+        // Use vizState to determine if active or idle, not visualizer mode
+        if (vizState === 'active' || vizState === 'line') drawActive();
+        else drawIdle(tSec);
+        rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+};
+
+},{"./visualizers/registry.js":"je9ID","@parcel/transformer-js/src/esmodule-helpers.js":"jnFvT"}],"je9ID":[function(require,module,exports,__globalThis) {
+// Visualization modes registry
+var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
+parcelHelpers.defineInteropFlag(exports);
+parcelHelpers.export(exports, "createVisualizer", ()=>createVisualizer);
+parcelHelpers.export(exports, "registerVisualizer", ()=>registerVisualizer);
+var _lineVisualizerJs = require("./lineVisualizer.js");
+var _imageVisualizerJs = require("./imageVisualizer.js");
+const visualizerRegistry = {
+    line: (0, _lineVisualizerJs.LineVisualizer),
+    image: (0, _imageVisualizerJs.ImageVisualizer)
+};
+function createVisualizer(mode, config) {
+    const VisualizerClass = visualizerRegistry[mode];
+    if (!VisualizerClass) {
+        console.warn(`[viz] Unknown visualizer mode: ${mode}, falling back to 'line'`);
+        return new (0, _lineVisualizerJs.LineVisualizer)(config);
+    }
+    return new VisualizerClass(config);
+}
+function registerVisualizer(mode, VisualizerClass) {
+    visualizerRegistry[mode] = VisualizerClass;
+}
+
+},{"./lineVisualizer.js":"48K6r","./imageVisualizer.js":"hCeB2","@parcel/transformer-js/src/esmodule-helpers.js":"jnFvT"}],"48K6r":[function(require,module,exports,__globalThis) {
+// Line visualization mode
+var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
+parcelHelpers.defineInteropFlag(exports);
+parcelHelpers.export(exports, "LineVisualizer", ()=>LineVisualizer);
+class LineVisualizer {
+    constructor(config = {}){
+        this.color = config.color || '#00ff80';
+        this.shadowBlur = config.shadowBlur || 16;
+        this.lineWidth = config.lineWidth || 3;
+        this.backgroundImage = config.backgroundImage || null;
+        this.backgroundOpacity = config.backgroundOpacity !== undefined ? config.backgroundOpacity : 0.5;
+    }
+    setup(containerElement) {
+        // Setup background image for line visualizer
+        if (containerElement && this.backgroundImage) {
+            containerElement.style.setProperty('--bg-image', `url('${this.backgroundImage}')`);
+            containerElement.style.setProperty('--bg-opacity', this.backgroundOpacity);
+            containerElement.classList.add('has-bg');
+            console.log('[LineVisualizer] Background image configured:', this.backgroundImage, 'opacity:', this.backgroundOpacity);
+        }
+    }
+    draw(ctx, canvas, analyser, dataArray, activeConversation, lastSdkBins) {
+        if (!ctx || !canvas) return {
+            rms: 0
+        };
+        const w = canvas.clientWidth;
+        const h = canvas.clientHeight;
+        ctx.clearRect(0, 0, w, h);
+        ctx.beginPath();
+        ctx.lineWidth = this.lineWidth;
+        ctx.strokeStyle = this.color;
+        ctx.shadowColor = this.color;
+        ctx.shadowBlur = this.shadowBlur;
+        const midY = Math.floor(h / 2);
+        let rms = 0;
+        // Strategy 1: Try to use the SDK's built-in getOutputByteFrequencyData() method
+        if (activeConversation?.getOutputByteFrequencyData) try {
+            const frequencyData = activeConversation.getOutputByteFrequencyData();
+            if (frequencyData && frequencyData.length > 0) {
+                // Convert frequency data to waveform-like visualization
+                const step = w / frequencyData.length;
+                let sum = 0;
+                for(let i = 0; i < frequencyData.length; i++){
+                    const normalized = frequencyData[i] / 255; // 0..1
+                    const x = i * step;
+                    // Create wave effect from frequency data
+                    const amplitude = normalized * (h * 0.3);
+                    const y = midY + Math.sin(i * 0.1) * amplitude - amplitude / 2;
+                    if (i === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                    sum += normalized * normalized;
+                }
+                rms = Math.sqrt(sum / frequencyData.length);
+                ctx.stroke();
+                return {
+                    rms
+                };
+            }
+        } catch (e) {
+            console.warn('[LineVisualizer] getOutputByteFrequencyData failed:', e);
+        }
+        // Strategy 2: Use external analyser if provided (fallback)
+        if (analyser && dataArray) {
+            analyser.getByteTimeDomainData(dataArray);
+            // Remove DC offset to keep center exactly at midY
+            let mean = 0;
+            for(let i = 0; i < dataArray.length; i++)mean += dataArray[i];
+            mean /= dataArray.length;
+            const step = w / dataArray.length;
+            let sum = 0;
+            for(let i = 0; i < dataArray.length; i++){
+                const centered = (dataArray[i] - mean) / 128; // -1..1 around 0
+                const x = i * step;
+                const y = midY + centered * (h * 0.22);
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+                sum += centered * centered;
+            }
+            rms = Math.sqrt(sum / dataArray.length);
+            ctx.stroke();
+            return {
+                rms
+            };
+        }
+        // Strategy 3: Draw flat line if no data available
+        ctx.moveTo(0, midY);
+        ctx.lineTo(w, midY);
+        ctx.stroke();
+        return {
+            rms: 0
+        };
+    }
+    drawIdle(ctx, canvas, tSec) {
+        if (!ctx || !canvas) return;
+        const w = canvas.clientWidth;
+        const h = canvas.clientHeight;
+        ctx.clearRect(0, 0, w, h);
+        const cx = w / 2;
+        const cy = h / 2;
+        const base = Math.min(w, h) * 0.12;
+        const r = base * (1 + 0.06 * Math.sin(tSec * 2 * Math.PI * 0.9));
+        ctx.shadowColor = this.color;
+        ctx.shadowBlur = 20;
+        ctx.strokeStyle = this.color;
+        ctx.lineWidth = this.lineWidth;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.stroke();
+    }
+}
+
+},{"@parcel/transformer-js/src/esmodule-helpers.js":"jnFvT"}],"hCeB2":[function(require,module,exports,__globalThis) {
+// Image visualization mode
+var parcelHelpers = require("@parcel/transformer-js/src/esmodule-helpers.js");
+parcelHelpers.defineInteropFlag(exports);
+parcelHelpers.export(exports, "ImageVisualizer", ()=>ImageVisualizer);
+class ImageVisualizer {
+    constructor(config = {}){
+        console.log('[ImageVisualizer] Constructor called with config:', config);
+        this.mode = 'image';
+        this.interval = config.interval || 200; // ms between frames
+        this.talkImages = config.talk_images || [];
+        this.idleImages = config.idle_images || [];
+        this.backgroundColor = config.backgroundColor || '#000000';
+        console.log('[ImageVisualizer] Talk images:', this.talkImages);
+        console.log('[ImageVisualizer] Idle images:', this.idleImages);
+        // Preloaded images
+        this.talkImageElements = [];
+        this.idleImageElements = [];
+        this.imagesLoaded = false;
+        this.loadingPromise = null;
+        // Animation state
+        this.currentTalkFrame = 0;
+        this.lastFrameTime = 0;
+        this.currentIdleImage = null;
+        // Start preloading images
+        this.preloadImages();
+    }
+    setup(containerElement) {
+        // Setup background color for image visualizer
+        if (containerElement) {
+            containerElement.style.backgroundColor = this.backgroundColor;
+            console.log('[ImageVisualizer] Background color configured:', this.backgroundColor);
+            // If there's a background image class, remove it for image mode
+            containerElement.classList.remove('has-bg');
+            containerElement.style.removeProperty('--bg-image');
+        }
+    }
+    async preloadImages() {
+        if (this.loadingPromise) return this.loadingPromise;
+        this.loadingPromise = new Promise(async (resolve)=>{
+            const loadImage = (src)=>{
+                return new Promise((resolveImg, rejectImg)=>{
+                    const img = new Image();
+                    img.onload = ()=>resolveImg(img);
+                    img.onerror = ()=>{
+                        console.warn(`[ImageVisualizer] Failed to load image: ${src}`);
+                        rejectImg(new Error(`Failed to load ${src}`));
+                    };
+                    img.src = src;
+                });
+            };
+            try {
+                // Load all talk images
+                console.log('[ImageVisualizer] Preloading talk images:', this.talkImages);
+                const talkPromises = this.talkImages.map((src)=>loadImage(src).catch(()=>null));
+                this.talkImageElements = (await Promise.all(talkPromises)).filter((img)=>img !== null);
+                // Load all idle images
+                console.log('[ImageVisualizer] Preloading idle images:', this.idleImages);
+                const idlePromises = this.idleImages.map((src)=>loadImage(src).catch(()=>null));
+                this.idleImageElements = (await Promise.all(idlePromises)).filter((img)=>img !== null);
+                this.imagesLoaded = true;
+                console.log('[ImageVisualizer] All images preloaded successfully');
+                console.log(`  - Talk images: ${this.talkImageElements.length}`);
+                console.log(`  - Idle images: ${this.idleImageElements.length}`);
+                // Pick random idle image
+                if (this.idleImageElements.length > 0) this.currentIdleImage = this.idleImageElements[Math.floor(Math.random() * this.idleImageElements.length)];
+                resolve();
+            } catch (error) {
+                console.error('[ImageVisualizer] Error preloading images:', error);
+                this.imagesLoaded = true; // Mark as loaded anyway to avoid blocking
+                resolve();
+            }
+        });
+        return this.loadingPromise;
+    }
+    drawImage(ctx, canvas, img) {
+        if (!ctx || !canvas || !img) return;
+        const w = canvas.clientWidth;
+        const h = canvas.clientHeight;
+        // Clear canvas
+        ctx.clearRect(0, 0, w, h);
+        // Calculate scaling to fit image while maintaining aspect ratio
+        const imgAspect = img.width / img.height;
+        const canvasAspect = w / h;
+        let drawWidth, drawHeight, drawX, drawY;
+        if (imgAspect > canvasAspect) {
+            // Image is wider than canvas
+            drawWidth = w;
+            drawHeight = w / imgAspect;
+            drawX = 0;
+            drawY = (h - drawHeight) / 2;
+        } else {
+            // Image is taller than canvas
+            drawHeight = h;
+            drawWidth = h * imgAspect;
+            drawX = (w - drawWidth) / 2;
+            drawY = 0;
+        }
+        // Draw image centered and scaled
+        ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
+    }
+    draw(ctx, canvas, analyser, dataArray, activeConversation, lastSdkBins) {
+        if (!this.imagesLoaded || this.talkImageElements.length === 0) {
+            // Fallback: draw placeholder
+            this.drawPlaceholder(ctx, canvas, 'Loading...', '#00ff80');
+            return {
+                rms: 0
+            };
+        }
+        const now = performance.now();
+        // Check if it's time to advance frame
+        if (now - this.lastFrameTime >= this.interval) {
+            this.currentTalkFrame = (this.currentTalkFrame + 1) % this.talkImageElements.length;
+            this.lastFrameTime = now;
+        }
+        const currentImage = this.talkImageElements[this.currentTalkFrame];
+        this.drawImage(ctx, canvas, currentImage);
+        // Calculate RMS for activity detection (simplified for image mode)
+        let rms = 0.5; // Always consider "active" when speaking
+        return {
+            rms
+        };
+    }
+    drawIdle(ctx, canvas, tSec) {
+        if (!this.imagesLoaded) {
+            // Fallback: draw placeholder
+            this.drawPlaceholder(ctx, canvas, 'Loading...', '#00ff80');
+            return;
+        }
+        if (this.idleImageElements.length === 0) {
+            // No idle images, draw placeholder
+            this.drawPlaceholder(ctx, canvas, 'Idle', '#00ff80');
+            return;
+        }
+        // Draw current idle image
+        if (this.currentIdleImage) this.drawImage(ctx, canvas, this.currentIdleImage);
+    // Optionally, change idle image every N seconds
+    // For now, we keep the same random idle image
+    }
+    drawPlaceholder(ctx, canvas, text, color) {
+        if (!ctx || !canvas) return;
+        const w = canvas.clientWidth;
+        const h = canvas.clientHeight;
+        ctx.clearRect(0, 0, w, h);
+        ctx.fillStyle = color;
+        ctx.font = '24px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, w / 2, h / 2);
+    }
+    // Method to change idle image (can be called externally or on timer)
+    changeIdleImage() {
+        if (this.idleImageElements.length > 0) this.currentIdleImage = this.idleImageElements[Math.floor(Math.random() * this.idleImageElements.length)];
+    }
+    // Reset talk animation to first frame
+    resetTalkAnimation() {
+        this.currentTalkFrame = 0;
+        this.lastFrameTime = performance.now();
+    }
+}
+
 },{"@parcel/transformer-js/src/esmodule-helpers.js":"jnFvT"}],"KX46x":[function(require,module,exports,__globalThis) {
 // Subtitle component for displaying AI speech as dynamic captions
 // Integrates with 11Labs Conversation API onMessage callback
@@ -28818,6 +28894,7 @@ parcelHelpers.export(exports, "configureSubtitles", ()=>configureSubtitles);
 parcelHelpers.export(exports, "setSubtitlesEnabled", ()=>setSubtitlesEnabled);
 parcelHelpers.export(exports, "handleConversationMessage", ()=>handleConversationMessage);
 parcelHelpers.export(exports, "clearSubtitles", ()=>clearSubtitles);
+parcelHelpers.export(exports, "handleInterruption", ()=>handleInterruption);
 parcelHelpers.export(exports, "destroySubtitles", ()=>destroySubtitles);
 parcelHelpers.export(exports, "setSubtitleText", ()=>setSubtitleText);
 let subtitleContainer = null;
@@ -29136,6 +29213,19 @@ const clearSubtitles = ()=>{
         setTimeout(()=>{
             if (subtitleContainer) subtitleContainer.textContent = '';
         }, 300);
+    }
+};
+const handleInterruption = ()=>{
+    console.log('[subtitle] Interruption detected - clearing all subtitles immediately');
+    // Stop all animations and clear queues
+    stopAnimation();
+    // Clear current block words and displayed words
+    currentBlockWords = [];
+    displayedWords = [];
+    // Immediately hide and clear the subtitle container
+    if (subtitleContainer) {
+        subtitleContainer.style.opacity = '0';
+        subtitleContainer.textContent = '';
     }
 };
 const destroySubtitles = ()=>{

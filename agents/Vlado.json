@@ -5,7 +5,7 @@
     "defaultVisualization": "image",
     "subtitles": {
         "enabled": true,
-        "wordsPerSecond": 3,
+        "wordsPerSecond": 4,
         "fadeOutDelay": 2000,
         "maxLines": 2,
         "maxCharsPerLine": 40,
