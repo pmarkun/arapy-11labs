@@ -371,6 +371,25 @@ export const clearSubtitles = () => {
   }
 };
 
+// Handler for interruption (ElevenLabs onInterruption callback)
+// Called when the user interrupts the agent while it's speaking
+export const handleInterruption = () => {
+  console.log('[subtitle] Interruption detected - clearing all subtitles immediately');
+  
+  // Stop all animations and clear queues
+  stopAnimation();
+  
+  // Clear current block words and displayed words
+  currentBlockWords = [];
+  displayedWords = [];
+  
+  // Immediately hide and clear the subtitle container
+  if (subtitleContainer) {
+    subtitleContainer.style.opacity = '0';
+    subtitleContainer.textContent = '';
+  }
+};
+
 // Clean up subtitle system
 export const destroySubtitles = () => {
   stopAnimation();

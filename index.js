@@ -1,7 +1,7 @@
 // Importa o Conversation do pacote @elevenlabs/client
  import { Conversation } from '@elevenlabs/client';
  import { initFullVisualizer, observeMediaPlayback, hookConversationAudio, connectMediaEl, setActiveConversation, updateVisualizerMode, configureVisualizer} from './visualizer.js';
- import { initSubtitles, handleConversationMessage, configureSubtitles, clearSubtitles, setSubtitlesEnabled } from './subtitle.js';
+ import { initSubtitles, handleConversationMessage, configureSubtitles, clearSubtitles, setSubtitlesEnabled, handleInterruption } from './subtitle.js';
 
  const startBtn = document.getElementById('startBtn');
  const stopBtn = document.getElementById('stopBtn');
@@ -353,6 +353,14 @@ loadConfig();
               }
             }
           } catch {}
+       },
+       onInterruption: () => {
+         console.log('Interrupção detectada pelo usuário');
+         // Handle subtitle interruption
+         const subtitlesEnabled = config.subtitles ? config.subtitles.enabled !== false : true;
+         if (subtitlesEnabled) {
+           handleInterruption();
+         }
        },
      });
 
