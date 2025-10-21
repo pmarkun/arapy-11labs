@@ -11,7 +11,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-  "@elevenlabs/client": "^0.8.0"
+    "@elevenlabs/client": "^0.8.0"
   },
   "devDependencies": {
     "gh-pages": "^6.3.0",
