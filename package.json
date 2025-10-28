@@ -3,8 +3,8 @@
   "version": "0.0.1",
   "scripts": {
     "dev": "parcel index.html",
-    "build": "parcel build index.html --dist-dir dist --public-url ./ && cp -R public/* dist/ && cp .nojekyll dist/",
-    "deploy": "npm run build && gh-pages -d dist"
+    "build": "rm -rf dist .parcel-cache && parcel build index.html --no-cache --dist-dir dist --public-url ./ && cp -R public/* dist/ && cp .nojekyll dist/",
+    "deploy": "npm run build && gh-pages -d dist -t"
   },
   "keywords": [],
   "author": "",

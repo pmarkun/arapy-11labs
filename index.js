@@ -47,6 +47,20 @@ const loadConfig = async () => {
   const urlVisualization = urlParams.get('visualization');
   const urlSubtitles = config.subtitlesEnabled;
   
+  // Parse custom config overrides from URL parameter
+  let customConfigOverrides = {};
+  const configOverrideParam = urlParams.get('config');
+  if (configOverrideParam) {
+    try {
+      customConfigOverrides = JSON.parse(decodeURIComponent(configOverrideParam));
+      console.log('Custom config overrides from URL:', customConfigOverrides);
+    } catch (error) {
+      console.error('Error parsing config parameter:', error);
+      showError(`Erro ao processar parâmetro 'config': JSON inválido. Detalhes: ${error.message}`);
+      return;
+    }
+  }
+  
   if (!config.agentId) {
       try {
           const response = await fetch(`./agents/${config.name}.json`);
@@ -56,10 +70,12 @@ const loadConfig = async () => {
           const data = await response.json();
           
           // Merge JSON data with URL parameters (URL params have priority)
+          // Order: data -> customConfigOverrides -> specific URL params
           config = {
             ...data,
+            ...customConfigOverrides,
             mode: urlMode,
-            visualizationMode: urlVisualization || data.defaultVisualization
+            visualizationMode: urlVisualization || customConfigOverrides.visualizationMode || data.defaultVisualization
           };
           
           // Override subtitles.enabled if URL parameter is provided
