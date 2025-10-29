@@ -19,7 +19,7 @@
         "image": {
             "mode": "image",
             "interval": 200,
-            "backgroundColor": "#1a1a2e",
+            "backgroundColor": "#000000",
             "talk_images": [
                 "agents/Vlado/face01.png",
                 "agents/Vlado/face02.png",

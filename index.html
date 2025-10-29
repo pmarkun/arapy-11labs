@@ -96,6 +96,19 @@
       animation: pulse 2s ease-in-out infinite;
     }
 
+    /* Subtítulo no modo painel ocupa 80% da largura */
+    #painelMode .subtitle-container {
+      position: absolute;
+      left: 10%;
+      width: 95% !important;
+      max-width: 95% !important;
+      text-align: center;
+      top: 90%;
+      transform: translateY(-100%);
+      word-break: break-word;
+      padding: 0.10rem 0.5rem;
+    }
+
     @keyframes pulse {
       0%, 100% {
         transform: scale(1);

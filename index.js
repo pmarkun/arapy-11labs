@@ -279,13 +279,13 @@ const initializePainelMode = () => {
     observeMediaPlayback();
     
     // Initialize subtitles (uses defaults if no config provided)
-    const subtitlesConfig = config.subtitles || {};
+    const subtitlesConfig = { ...(config.subtitles || {}), padding: '0.10rem 0.5rem', maxCharsPerLine: 60 };
     // Check if enabled (default is true, can be overridden by JSON or URL)
     const subtitlesEnabled = subtitlesConfig.enabled !== false;
     
     if (subtitlesEnabled) {
       initSubtitles(painelModeEl, subtitlesConfig);
-      console.log('[painel] Subtitles initialized');
+      console.log('[painel] Subtitles initialized (padding reduzido, maxCharsPerLine 60)');
     } else {
       console.log('[painel] Subtitles disabled');
     }
