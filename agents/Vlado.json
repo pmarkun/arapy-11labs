@@ -1,17 +1,17 @@
 {
     "name": "Vlado",
-    "description": "A simple agent that uses the 11 Labs API to generate audio from text.",
+    "description": "A simple agent that uses the 11 Labs API to generate audio from text",
     "agentId": "agent_9401k7jjjng0f1erseqt1m58dyg3",
     "defaultVisualization": "image",
     "subtitles": {
         "enabled": true,
-        "wordsPerSecond": 2.5,
+        "wordsPerSecond": 3.4,
         "fadeOutDelay": 2000,
         "maxLines": 2,
         "maxCharsPerLine": 40,
         "blockDuration": 3000,
         "position": "bottom",
-        "fontSize": "2rem",
+        "fontSize": "1rem",
         "color": "#ffffff",
         "backgroundColor": "rgba(0, 0, 0, 0.7)"
     },
@@ -19,7 +19,7 @@
         "image": {
             "mode": "image",
             "interval": 200,
-            "backgroundColor": "#1a1a2e",
+            "backgroundColor": "#000000",
             "talk_images": [
                 "agents/Vlado/face01.png",
                 "agents/Vlado/face02.png",
