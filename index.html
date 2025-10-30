@@ -109,14 +109,19 @@
       padding: 0.10rem 0.5rem;
     }
 
-    @keyframes pulse {
-      0%, 100% {
-        transform: scale(1);
-      }
-      50% {
-        transform: scale(1.05);
-      }
-    }
+     @keyframes pulse {
+       0%, 100% {
+         transform: scale(1);
+       }
+       50% {
+         transform: scale(1.05);
+       }
+     }
+
+     /* Admin Panel Styles */
+     #adminPanel {
+       display: none;
+     }
   </style>
 </head>
 <body class="bg-gray-100 flex items-center justify-center min-h-screen">
@@ -129,14 +134,22 @@
     </div>
   </div>
 
-  <!-- Painel mode - 384x768 LED panel (hidden by default) -->
-  <div id="painelMode" class="hidden bg-black select-none cursor-pointer">
-    <canvas id="painelCanvas" class="block"></canvas>
-    <!-- Click to talk overlay -->
-    <div id="clickToTalkOverlay2" class="hidden">
-      <div class="message">Clique para conversar</div>
-    </div>
-  </div>
+   <!-- Painel mode - 384x768 LED panel (hidden by default) -->
+   <div id="painelMode" class="hidden bg-black select-none cursor-pointer">
+     <canvas id="painelCanvas" class="block"></canvas>
+     <!-- Click to talk overlay -->
+     <div id="clickToTalkOverlay2" class="hidden">
+       <div class="message">Clique para conversar</div>
+     </div>
+   </div>
+
+   <!-- Admin Panel -->
+   <div id="adminPanel" class="fixed top-4 right-4 bg-gray-800 text-white p-4 rounded shadow-lg z-50 hidden">
+     <h3 class="text-sm font-bold mb-2">Painel Admin</h3>
+     <button id="restartBtn" class="block w-full mb-2 px-3 py-1 bg-red-600 hover:bg-red-700 rounded text-xs">Reiniciar</button>
+     <button id="micToggleBtn" class="block w-full mb-2 px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-xs">Microfone: Ligado</button>
+     <div id="healthStatus" class="text-xs">Status: Carregando...</div>
+   </div>
 
   <!-- Default card UI -->
   <div id="card" class="bg-white p-6 rounded shadow-md max-w-md w-full mx-4">

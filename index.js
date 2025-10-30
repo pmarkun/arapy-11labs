@@ -3,13 +3,20 @@
  import { initFullVisualizer, observeMediaPlayback, hookConversationAudio, connectMediaEl, setActiveConversation, updateVisualizerMode, configureVisualizer} from './visualizer.js';
  import { initSubtitles, handleConversationMessage, configureSubtitles, clearSubtitles, setSubtitlesEnabled, handleInterruption } from './subtitle.js';
 
- const startBtn = document.getElementById('startBtn');
- const stopBtn = document.getElementById('stopBtn');
- const statusEl = document.getElementById('status');
- let conversationInstance = null;
- let audio = null;
- let isStarting = false; // Flag to prevent double-click
- let clickToTalkOverlay = null; // Reference to the overlay element
+  const startBtn = document.getElementById('startBtn');
+  const stopBtn = document.getElementById('stopBtn');
+  const statusEl = document.getElementById('status');
+  let conversationInstance = null;
+  let audio = null;
+  let isStarting = false; // Flag to prevent double-click
+  let clickToTalkOverlay = null; // Reference to the overlay element
+  let mediaStream = null; // To store mic stream for toggling
+  // Admin panel elements
+  const adminPanel = document.getElementById('adminPanel');
+  const restartBtn = document.getElementById('restartBtn');
+  const micToggleBtn = document.getElementById('micToggleBtn');
+  const healthStatusEl = document.getElementById('healthStatus');
+  let micEnabled = true; // Default mic on
 // Visualizer state is managed in visualizer.js
 
 // Helper functions for click-to-talk overlay
@@ -184,125 +191,131 @@ const showError = (errorMessage) => {
   document.body.appendChild(errorDiv);
 };
 
-// Função para inicializar modo fullscreen
-const initializeFullscreenMode = () => {
-  const cardEl = document.getElementById('card');
-  const fullModeEl = document.getElementById('fullMode');
-  
-  if (config.mode === 'fullscreen') {
-    console.log('[fullscreen] Initializing fullscreen mode');
-    // Hide card, show overlay
-    if (cardEl) cardEl.classList.add('hidden');
-    if (fullModeEl) fullModeEl.classList.remove('hidden');
-    
-    // Initialize click-to-talk overlay
-    clickToTalkOverlay = document.getElementById('clickToTalkOverlay');
-    showClickToTalkOverlay();
-    
-    // Get visualization mode from URL or default
-    const vizMode = config.visualizationMode || config.defaultVisualization;
-    
-    // Get the specific visualization config
-    const vizConfig = config.visualizations[vizMode];
-    console.log('[fullscreen] Using visualization mode:', vizMode);
-    console.log('[fullscreen] Visualizer config:', vizConfig);
-    
-    // Add backgroundImage and backgroundOpacity to visualizer config if mode is 'line' and backgroundImage exists
-    if (vizConfig.mode === 'line' && config.backgroundImage) {
-      vizConfig.backgroundImage = config.backgroundImage;
-      if (config.backgroundOpacity !== undefined) {
-        vizConfig.backgroundOpacity = config.backgroundOpacity;
-      }
-    }
-    
-    initFullVisualizer('vizCanvas', vizConfig, fullModeEl);
-    observeMediaPlayback();
-    
-    // Initialize subtitles (uses defaults if no config provided)
-    const subtitlesConfig = config.subtitles || {};
-    // Check if enabled (default is true, can be overridden by JSON or URL)
-    const subtitlesEnabled = subtitlesConfig.enabled !== false;
-    
-    if (subtitlesEnabled) {
-      initSubtitles(fullModeEl, subtitlesConfig);
-      console.log('[fullscreen] Subtitles initialized');
-    } else {
-      console.log('[fullscreen] Subtitles disabled');
-    }
-    
-    // Click anywhere to start/stop
-    fullModeEl.addEventListener('click', async () => {
-      if (!conversationInstance) {
-        await startConversation();
-      } else {
-        await endConversation();
-      }
-    });
-    
-    // Idle by default
-    updateVisualizerMode('idle');
-  }
-};
+  // Função para inicializar modo fullscreen
+  const initializeFullscreenMode = () => {
+    const cardEl = document.getElementById('card');
+    const fullModeEl = document.getElementById('fullMode');
 
-// Função para inicializar modo painel (384x768 LED panel)
-const initializePainelMode = () => {
-  const cardEl = document.getElementById('card');
-  const painelModeEl = document.getElementById('painelMode');
-  
-  if (config.mode === 'painel') {
-    console.log('[painel] Initializing painel mode (384x768)');
-    // Hide card, show painel
-    if (cardEl) cardEl.classList.add('hidden');
-    if (painelModeEl) painelModeEl.classList.remove('hidden');
-    
-    // Initialize click-to-talk overlay
-    clickToTalkOverlay = document.getElementById('clickToTalkOverlay2');
-    showClickToTalkOverlay();
-    
-    // Get visualization mode from URL or default
-    const vizMode = config.visualizationMode || config.defaultVisualization;
-    
-    // Get the specific visualization config
-    const vizConfig = config.visualizations[vizMode];
-    console.log('[painel] Using visualization mode:', vizMode);
-    console.log('[painel] Visualizer config:', vizConfig);
-    
-    // Add backgroundImage and backgroundOpacity to visualizer config if mode is 'line' and backgroundImage exists
-    if (vizConfig.mode === 'line' && config.backgroundImage) {
-      vizConfig.backgroundImage = config.backgroundImage;
-      if (config.backgroundOpacity !== undefined) {
-        vizConfig.backgroundOpacity = config.backgroundOpacity;
+    if (config.mode === 'fullscreen') {
+      console.log('[fullscreen] Initializing fullscreen mode');
+      // Hide card, show overlay
+      if (cardEl) cardEl.classList.add('hidden');
+      if (fullModeEl) fullModeEl.classList.remove('hidden');
+
+      // Hide admin panel
+      adminPanel.classList.add('hidden');
+
+      // Initialize click-to-talk overlay
+      clickToTalkOverlay = document.getElementById('clickToTalkOverlay');
+      showClickToTalkOverlay();
+
+      // Get visualization mode from URL or default
+      const vizMode = config.visualizationMode || config.defaultVisualization;
+
+      // Get the specific visualization config
+      const vizConfig = config.visualizations[vizMode];
+      console.log('[fullscreen] Using visualization mode:', vizMode);
+      console.log('[fullscreen] Visualizer config:', vizConfig);
+
+      // Add backgroundImage and backgroundOpacity to visualizer config if mode is 'line' and backgroundImage exists
+      if (vizConfig.mode === 'line' && config.backgroundImage) {
+        vizConfig.backgroundImage = config.backgroundImage;
+        if (config.backgroundOpacity !== undefined) {
+          vizConfig.backgroundOpacity = config.backgroundOpacity;
+        }
       }
-    }
-    
-    initFullVisualizer('painelCanvas', vizConfig, painelModeEl);
-    observeMediaPlayback();
-    
-    // Initialize subtitles (uses defaults if no config provided)
-    const subtitlesConfig = { ...(config.subtitles || {}), padding: '0.10rem 0.5rem', maxCharsPerLine: 60 };
-    // Check if enabled (default is true, can be overridden by JSON or URL)
-    const subtitlesEnabled = subtitlesConfig.enabled !== false;
-    
-    if (subtitlesEnabled) {
-      initSubtitles(painelModeEl, subtitlesConfig);
-      console.log('[painel] Subtitles initialized (padding reduzido, maxCharsPerLine 60)');
-    } else {
-      console.log('[painel] Subtitles disabled');
-    }
-    
-    // Click anywhere to start/stop
-    painelModeEl.addEventListener('click', async () => {
-      if (!conversationInstance) {
-        await startConversation();
+
+      initFullVisualizer('vizCanvas', vizConfig, fullModeEl);
+      observeMediaPlayback();
+
+      // Initialize subtitles (uses defaults if no config provided)
+      const subtitlesConfig = config.subtitles || {};
+      // Check if enabled (default is true, can be overridden by JSON or URL)
+      const subtitlesEnabled = subtitlesConfig.enabled !== false;
+
+      if (subtitlesEnabled) {
+        initSubtitles(fullModeEl, subtitlesConfig);
+        console.log('[fullscreen] Subtitles initialized');
       } else {
-        await endConversation();
+        console.log('[fullscreen] Subtitles disabled');
       }
-    });
-    
-    // Idle by default
-    updateVisualizerMode('idle');
-  }
-};
+
+      // Click anywhere to start/stop
+      fullModeEl.addEventListener('click', async () => {
+        if (!conversationInstance) {
+          await startConversation();
+        } else {
+          await endConversation();
+        }
+      });
+
+      // Idle by default
+      updateVisualizerMode('idle');
+    }
+  };
+
+  // Função para inicializar modo painel (384x768 LED panel)
+  const initializePainelMode = () => {
+    const cardEl = document.getElementById('card');
+    const painelModeEl = document.getElementById('painelMode');
+
+    if (config.mode === 'painel') {
+      console.log('[painel] Initializing painel mode (384x768)');
+      // Hide card, show painel
+      if (cardEl) cardEl.classList.add('hidden');
+      if (painelModeEl) painelModeEl.classList.remove('hidden');
+
+      // Admin panel hidden by default, toggle with Ctrl+A
+      adminPanel.classList.add('hidden');
+
+      // Initialize click-to-talk overlay
+      clickToTalkOverlay = document.getElementById('clickToTalkOverlay2');
+      showClickToTalkOverlay();
+
+      // Get visualization mode from URL or default
+      const vizMode = config.visualizationMode || config.defaultVisualization;
+
+      // Get the specific visualization config
+      const vizConfig = config.visualizations[vizMode];
+      console.log('[painel] Using visualization mode:', vizMode);
+      console.log('[painel] Visualizer config:', vizConfig);
+
+      // Add backgroundImage and backgroundOpacity to visualizer config if mode is 'line' and backgroundImage exists
+      if (vizConfig.mode === 'line' && config.backgroundImage) {
+        vizConfig.backgroundImage = config.backgroundImage;
+        if (config.backgroundOpacity !== undefined) {
+          vizConfig.backgroundOpacity = config.backgroundOpacity;
+        }
+      }
+
+      initFullVisualizer('painelCanvas', vizConfig, painelModeEl);
+      observeMediaPlayback();
+
+      // Initialize subtitles (uses defaults if no config provided)
+      const subtitlesConfig = { ...(config.subtitles || {}), padding: '0.10rem 0.5rem', maxCharsPerLine: 60 };
+      // Check if enabled (default is true, can be overridden by JSON or URL)
+      const subtitlesEnabled = subtitlesConfig.enabled !== false;
+
+      if (subtitlesEnabled) {
+        initSubtitles(painelModeEl, subtitlesConfig);
+        console.log('[painel] Subtitles initialized (padding reduzido, maxCharsPerLine 60)');
+      } else {
+        console.log('[painel] Subtitles disabled');
+      }
+
+      // Click anywhere to start/stop
+      painelModeEl.addEventListener('click', async () => {
+        if (!conversationInstance) {
+          await startConversation();
+        } else {
+          await endConversation();
+        }
+      });
+
+      // Idle by default
+      updateVisualizerMode('idle');
+    }
+  };
 
 loadConfig();
 
@@ -324,10 +337,14 @@ loadConfig();
    
    isStarting = true;
    
-   try {
-     // Primeiro, solicite acesso ao microfone e explique o porquê ao usuário
-     await navigator.mediaDevices.getUserMedia({ audio: true });
-     updateStatus('Microfone liberado');
+    try {
+      // Primeiro, solicite acesso ao microfone e explique o porquê ao usuário
+      mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Mute if mic is disabled
+      if (!micEnabled) {
+        mediaStream.getAudioTracks().forEach(track => track.enabled = false);
+      }
+      updateStatus('Microfone liberado');
 
     //Play an mp3 file and wait for it to finish
       if (config.startAudio) {
@@ -380,22 +397,30 @@ loadConfig();
        onStatusChange: (status) => {
          console.log('Status alterado:', status);
        },
-       onModeChange: (mode) => {
-          console.log('Modo alterado:', mode);
-          // Control visualization directly based on SDK mode
-          try {
-            if (config.mode === 'fullscreen' || config.mode === 'painel') {
-              if (mode.mode == 'speaking') {
-                updateVisualizerMode('active');
-                console.log('[viz] speaking!!!');
-              } else {
-                // Any other mode (listening, idle, etc.) goes to idle
-                updateVisualizerMode('idle');
-                console.log('[viz] idle!');
-              }
-            }
-          } catch {}
-       },
+        onModeChange: (mode) => {
+           console.log('Modo alterado:', mode);
+           // Update status based on mode
+           if (mode.mode === 'speaking') {
+             updateStatus('Falando');
+           } else if (mode.mode === 'listening') {
+             updateStatus('Ouvindo');
+           } else {
+             updateStatus('Conectado');
+           }
+           // Control visualization directly based on SDK mode
+           try {
+             if (config.mode === 'fullscreen' || config.mode === 'painel') {
+               if (mode.mode == 'speaking') {
+                 updateVisualizerMode('active');
+                 console.log('[viz] speaking!!!');
+               } else {
+                 // Any other mode (listening, idle, etc.) goes to idle
+                 updateVisualizerMode('idle');
+                 console.log('[viz] idle!');
+               }
+             }
+           } catch {}
+        },
        onInterruption: () => {
          console.log('Interrupção detectada pelo usuário');
          // Handle subtitle interruption
@@ -422,32 +447,77 @@ loadConfig();
    }
  }
 
- // Função para encerrar a conversa
- async function endConversation() {
-   if (audio) {
-      audio.pause();
-      audio = null;
-   }
-   // Clear subtitles
-   clearSubtitles();
-   
-   // Return to idle
-   updateVisualizerMode('idle');
-   
-   // Show the click-to-talk overlay when stopping
-   showClickToTalkOverlay();
-   
-   if (conversationInstance) {
-     await conversationInstance.endSession();
-     conversationInstance = null;
-   }
-   // Reset starting flag
-   isStarting = false;
-   updateStatus('Desconectado');
-   startBtn.classList.remove('hidden');
-   stopBtn.classList.add('hidden');
- }
+  // Função para encerrar a conversa
+  async function endConversation() {
+    if (audio) {
+       audio.pause();
+       audio = null;
+    }
+    // Stop media stream
+    if (mediaStream) {
+      mediaStream.getTracks().forEach(track => track.stop());
+      mediaStream = null;
+    }
+    // Clear subtitles
+    clearSubtitles();
 
- // Eventos dos botões
- startBtn.addEventListener('click', startConversation);
- stopBtn.addEventListener('click', endConversation);
+    // Return to idle
+    updateVisualizerMode('idle');
+
+    // Show the click-to-talk overlay when stopping
+    showClickToTalkOverlay();
+
+    if (conversationInstance) {
+      await conversationInstance.endSession();
+      conversationInstance = null;
+    }
+    // Reset starting flag
+    isStarting = false;
+    updateStatus('Desconectado');
+    startBtn.classList.remove('hidden');
+    stopBtn.classList.add('hidden');
+  }
+
+  // Eventos dos botões
+  startBtn.addEventListener('click', startConversation);
+  stopBtn.addEventListener('click', endConversation);
+
+  // Admin panel events
+  restartBtn.addEventListener('click', () => {
+    window.location.reload();
+  });
+
+  micToggleBtn.addEventListener('click', () => {
+    micEnabled = !micEnabled;
+    micToggleBtn.textContent = `Microfone: ${micEnabled ? 'Ligado' : 'Desligado'}`;
+    micToggleBtn.className = `block w-full mb-2 px-3 py-1 ${micEnabled ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-600 hover:bg-gray-700'} rounded text-xs`;
+    // Use SDK method if conversation is active
+    if (conversationInstance && typeof conversationInstance.setMicMuted === 'function') {
+      conversationInstance.setMicMuted(!micEnabled); // true to mute when micEnabled is false
+      updateStatus(micEnabled ? 'Microfone ligado' : 'Microfone mutado');
+    } else {
+      updateStatus(micEnabled ? 'Microfone ligado' : 'Microfone mutado');
+    }
+  });
+
+  // Keyboard shortcut to toggle admin panel (Ctrl+A) - global
+  document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.key === 'a') {
+      e.preventDefault();
+      adminPanel.classList.toggle('hidden');
+    }
+  });
+
+  // Update health status
+  const updateHealthStatus = () => {
+    const status = statusEl.textContent.replace('Status: ', '');
+    healthStatusEl.textContent = `Status: ${status}`;
+  };
+  // Call initially
+  updateHealthStatus();
+  // Update on status change
+  const originalUpdateStatus = updateStatus;
+  updateStatus = (status) => {
+    originalUpdateStatus(status);
+    updateHealthStatus();
+  };
