@@ -43,6 +43,7 @@ let config = {
     mode: urlParams.get('mode') || 'card', // 'card', 'fullscreen', or 'painel'
     visualizationMode: urlParams.get('visualization') || null,
     subtitlesEnabled: urlParams.get('subtitles') !== null ? (urlParams.get('subtitles') === 'true' || urlParams.get('subtitles') === '1') : null,
+    admin: urlParams.get('admin') === 'true',
 }
 
 console.log('Initial config from URL params:', config);
@@ -53,6 +54,7 @@ const loadConfig = async () => {
   const urlMode = urlParams.get('mode') || 'card';
   const urlVisualization = urlParams.get('visualization');
   const urlSubtitles = config.subtitlesEnabled;
+  const urlAdmin = config.admin; // Store admin parameter
   
   // Parse custom config overrides from URL parameter
   let customConfigOverrides = {};
@@ -82,7 +84,8 @@ const loadConfig = async () => {
             ...data,
             ...customConfigOverrides,
             mode: urlMode,
-            visualizationMode: urlVisualization || customConfigOverrides.visualizationMode || data.defaultVisualization
+            visualizationMode: urlVisualization || customConfigOverrides.visualizationMode || data.defaultVisualization,
+            admin: urlAdmin // Preserve admin parameter from URL
           };
           
           // Override subtitles.enabled if URL parameter is provided
@@ -114,13 +117,18 @@ const loadConfig = async () => {
     }
   }
   
-  // Initialize display mode after config is loaded
-  if (config.mode === 'painel') {
-    initializePainelMode();
-  } else if (config.mode === 'fullscreen') {
-    initializeFullscreenMode();
-  }
-};
+   // Initialize display mode after config is loaded
+   if (config.mode === 'painel') {
+     initializePainelMode();
+   } else if (config.mode === 'fullscreen') {
+     initializeFullscreenMode();
+   }
+
+   // Show admin panel if admin=true
+   if (config.admin) {
+     adminPanel.classList.remove('hidden');
+   }
+ };
 
 // Function to validate visualization configuration
 const validateVisualizationConfig = () => {
@@ -202,8 +210,8 @@ const showError = (errorMessage) => {
       if (cardEl) cardEl.classList.add('hidden');
       if (fullModeEl) fullModeEl.classList.remove('hidden');
 
-      // Hide admin panel
-      adminPanel.classList.add('hidden');
+      // Admin panel visibility is controlled by config.admin (set on line 126-128)
+      // Do not hide it here if admin=true
 
       // Initialize click-to-talk overlay
       clickToTalkOverlay = document.getElementById('clickToTalkOverlay');
@@ -265,8 +273,8 @@ const showError = (errorMessage) => {
       if (cardEl) cardEl.classList.add('hidden');
       if (painelModeEl) painelModeEl.classList.remove('hidden');
 
-      // Admin panel hidden by default, toggle with Ctrl+A
-      adminPanel.classList.add('hidden');
+      // Admin panel visibility is controlled by config.admin (set on line 126-128)
+      // Do not hide it here if admin=true
 
       // Initialize click-to-talk overlay
       clickToTalkOverlay = document.getElementById('clickToTalkOverlay2');
@@ -500,13 +508,7 @@ loadConfig();
     }
   });
 
-  // Keyboard shortcut to toggle admin panel (Ctrl+A) - global
-  document.addEventListener('keydown', (e) => {
-    if (e.ctrlKey && e.key === 'a') {
-      e.preventDefault();
-      adminPanel.classList.toggle('hidden');
-    }
-  });
+
 
   // Update health status
   const updateHealthStatus = () => {
