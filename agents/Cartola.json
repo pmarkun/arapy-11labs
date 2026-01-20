@@ -1,0 +1,28 @@
+{
+    "name": "Cartola",
+    "description": "Angenor de Oliveira - Cartola, compositor e poeta do samba brasileiro",
+    "agentId": "agent_5301kfc84955ep3rrsnfq5en5z28",
+    "backgroundImage": "agents/Cartola/background.jpg",
+    "backgroundOpacity": 1.0,
+    "defaultVisualization": "line",
+    "subtitles": {
+        "enabled": false,
+        "wordsPerSecond": 2.5,
+        "fadeOutDelay": 2000,
+        "maxLines": 2,
+        "maxCharsPerLine": 40,
+        "blockDuration": 3000,
+        "position": "bottom",
+        "fontSize": "1.2rem",
+        "color": "#ffffff",
+        "backgroundColor": "rgba(0, 0, 0, 0.75)"
+    },
+    "visualizations": {
+        "line": {
+            "mode": "line",
+            "color": "#ffcc00",
+            "lineWidth": 3,
+            "shadowBlur": 12
+        }
+    }
+}
