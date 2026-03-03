@@ -1,0 +1,16 @@
+{
+    "name": "Dom Pedro I",
+    "description": "Agente biográfico de Dom Pedro Primeiro",
+    "agentId": "agent_1701kjsjr3zsf208ygq1pvzan4ts",
+    "backgroundImage": "images/dompedro.jpg",
+    "backgroundOpacity": 0.75,
+    "defaultVisualization": "line",
+    "visualizations": {
+        "line": {
+            "mode": "line",
+            "color": "#d4af37",
+            "lineWidth": 3,
+            "shadowBlur": 12
+        }
+    }
+}
